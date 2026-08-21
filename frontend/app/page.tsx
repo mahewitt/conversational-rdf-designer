@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCoAgent } from "@copilotkit/react-core";
+import { CopilotChat } from "@copilotkit/react-ui";
 import { Background, Controls, Edge, Node, ReactFlow } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -14,48 +15,12 @@ const initialEdges: Edge[] = [
   { id: "well-produces-measurement", source: "well", target: "measurement", label: "produces" },
 ];
 
-type AgentEvent = { type: string; data: { content?: string; graph?: { nodes: Node[]; edges: Edge[] } } };
+type SharedGraphState = { nodes: Node[]; edges: Edge[]; rdf: string };
 
 export default function Home() {
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
-  const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState(["Describe a domain and I’ll sketch its semantic model."]);
-  const [running, setRunning] = useState(false);
-
-  async function sendMessage() {
-    if (!message.trim() || running) return;
-    const prompt = message.trim();
-    setMessage("");
-    setMessages((current) => [...current, prompt]);
-    setRunning(true);
-    const response = await fetch("http://localhost:8000/api/agent/stream", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: prompt }),
-    });
-    const reader = response.body?.getReader();
-    if (!reader) return;
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split("\n\n");
-      buffer = chunks.pop() ?? "";
-      chunks.forEach((chunk) => {
-        const type = chunk.match(/^event: (.+)$/m)?.[1];
-        const raw = chunk.match(/^data: (.+)$/m)?.[1];
-        if (!type || !raw) return;
-        const agentEvent = { type, data: JSON.parse(raw) } as AgentEvent;
-        if (agentEvent.type === "state_update" && agentEvent.data.graph) {
-          setNodes(agentEvent.data.graph.nodes);
-          setEdges(agentEvent.data.graph.edges);
-        }
-        if (agentEvent.type === "assistant_message" && agentEvent.data.content) setMessages((current) => [...current, agentEvent.data.content!]);
-      });
-    }
-    setRunning(false);
-  }
+  const { state, running } = useCoAgent<SharedGraphState>({ name: "vibegraph", initialState: { nodes: initialNodes, edges: initialEdges, rdf: "" } });
+  const nodes = state?.nodes ?? initialNodes;
+  const edges = state?.edges ?? initialEdges;
 
   return <main className="shell">
     <aside className="sidebar">
@@ -65,9 +30,9 @@ export default function Home() {
     </aside>
     <section className="workspace">
       <header><div><div className="eyebrow">SEMANTIC DESIGNER / UNTITLED MODEL</div><h1>Shape knowledge together.</h1></div><button className="export">Export RDF <span>↗</span></button></header>
-      <div className="content"><section className="chat-panel"><div className="panel-heading"><span>Conversation</span><b>LIVE</b></div><div className="messages">{messages.map((item, index) => <div className={index % 2 ? "bubble user" : "bubble assistant"} key={`${item}-${index}`}>{item}</div>)}{running && <div className="typing">Agent is thinking <i /> <i /> <i /></div>}</div><div className="composer"><textarea value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} placeholder="Try: Create a facility with wells" /><button onClick={sendMessage} aria-label="Send message">↑</button><div className="composer-meta">⌘ Enter to send · semantic actions stream to canvas</div></div></section>
+      <div className="content"><section className="chat-panel"><div className="panel-heading"><span>Conversation</span><b>{running ? "STREAMING" : "LIVE"}</b></div><div className="copilot-chat"><CopilotChat instructions="You are VibeGraph, a semantic modelling assistant. Update the shared graph state from the user's modelling instructions." labels={{ title: "VibeGraph Agent", initial: "Describe a domain and I’ll sketch its semantic model." }} /></div></section>
         <section className="canvas-panel"><div className="canvas-toolbar"><span>MODEL CANVAS <b>{nodes.length} entities</b></span><span className="toolbar-actions">＋　−　⛶</span></div><div className="flow-wrap"><ReactFlow nodes={nodes} edges={edges} fitView><Background color="#d7e5e6" gap={22} size={1} /><Controls showInteractive={false} /></ReactFlow><div className="canvas-caption"><span className="legend teal" /> Entity <span className="legend coral" /> Measurement <span className="legend line" /> Relationship</div></div></section>
-        <aside className="rdf-panel"><div className="panel-heading"><span>RDF preview</span><span className="lock">HOUR 5</span></div><div className="rdf-placeholder"><div className="code-icon">{`</>`}</div><h2>Semantic output<br />will appear here</h2><p>As the graph evolves, VibeGraph will generate machine-readable Turtle.</p><div className="code-lines"><i /><i /><i /><i /></div></div></aside>
+        <aside className="rdf-panel"><div className="panel-heading"><span>RDF preview</span><span className="lock">LIVE STATE</span></div>{state?.rdf ? <pre className="rdf-output">{state.rdf}</pre> : <div className="rdf-placeholder"><div className="code-icon">{`</>`}</div><h2>Semantic output<br />will appear here</h2><p>As the graph evolves, VibeGraph will generate machine-readable Turtle.</p><div className="code-lines"><i /><i /><i /><i /></div></div>}</aside>
       </div>
     </section>
   </main>;

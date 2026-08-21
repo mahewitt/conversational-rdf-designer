@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Hour 1 streaming agent host for VibeGraph"
 requires-python = ">=3.11"
 dependencies = [
+    "ag-ui-langgraph>=0.0.43",
+    "ag-ui-protocol>=0.1.20",
     "fastapi>=0.115.0",
+    "langgraph>=1.2.11",
     "uvicorn[standard]>=0.30.0",
 ]
 
