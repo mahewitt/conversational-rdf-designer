@@ -39,6 +39,13 @@ class GraphStore:
         self.nodes = [node for node in self.nodes if node["id"] != entity_id]
         self.edges = [edge for edge in self.edges if edge["source"] != entity_id and edge["target"] != entity_id]
 
+    def clear_graph(self) -> dict[str, int]:
+        deleted_entities = len(self.nodes)
+        deleted_relationships = len(self.edges)
+        self.nodes = []
+        self.edges = []
+        return {"deleted_entities": deleted_entities, "deleted_relationships": deleted_relationships}
+
     def create_relationship(self, source: str, predicate: str, target: str) -> dict[str, Any]:
         if not self._node(source) or not self._node(target):
             raise ValueError("Both relationship endpoints must exist")

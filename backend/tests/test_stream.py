@@ -155,6 +155,38 @@ def test_document_extraction_uses_bulk_graph_operations(monkeypatch) -> None:
     assert {edge["label"] for edge in state["edges"]} == {"contains", "produces", "measures", "is stored in"}
 
 
+def test_clear_graph_tool_removes_all_graph_state(monkeypatch) -> None:
+    class FakeModel:
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            if messages[-1].type == "tool":
+                return AIMessage(content="Cleared the graph.")
+            return AIMessage(content="", tool_calls=[{"id": "call-clear", "name": "clear_graph", "args": {"confirm": True}}])
+
+    monkeypatch.setattr(graph, "configured_model", lambda: FakeModel())
+    response = post_agent_message(
+        TestClient(app),
+        "Delete all entities",
+        state={
+            "nodes": [
+                {"id": "facility", "type": "default", "position": {"x": 0, "y": 0}, "data": {"label": "Facility", "kind": "entity"}},
+                {"id": "well", "type": "default", "position": {"x": 100, "y": 0}, "data": {"label": "Well", "kind": "entity"}},
+            ],
+            "edges": [{"id": "facility-contains-well", "source": "facility", "target": "well", "label": "contains"}],
+            "rdf": "existing",
+        },
+        run_id="clear-turn",
+        thread_id="clear-thread",
+    )
+    state = latest_state_snapshot(response.text)
+
+    assert state["nodes"] == []
+    assert state["edges"] == []
+    assert state["rdf"] == "@prefix vg: <http://example.com/vibegraph#> .\n\n\n"
+
+
 def test_missing_model_configuration_fails_loudly(monkeypatch) -> None:
     for name in ("OPENAI_ENDPOINT", "OPENAI_API_KEY", "OPENAI_DEPLOYMENT"):
         monkeypatch.delenv(name, raising=False)

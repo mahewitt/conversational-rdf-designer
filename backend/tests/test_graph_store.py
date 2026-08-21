@@ -28,6 +28,19 @@ def test_delete_entity_removes_connected_relationships() -> None:
     assert store.edges == []
 
 
+def test_clear_graph_removes_all_entities_and_relationships() -> None:
+    store = GraphStore()
+    facility = store.create_entity("Facility")
+    well = store.create_entity("Well")
+    store.create_relationship(facility["id"], "contains", well["id"])
+
+    result = store.clear_graph()
+
+    assert result == {"deleted_entities": 2, "deleted_relationships": 1}
+    assert store.nodes == []
+    assert store.edges == []
+
+
 def test_update_entity_requires_an_existing_entity() -> None:
     store = GraphStore()
 

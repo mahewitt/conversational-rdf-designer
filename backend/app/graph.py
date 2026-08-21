@@ -35,6 +35,7 @@ Tool contract:
 - Use add_property for attributes on an existing entity.
 - Use update_entity for rename/refinement requests.
 - Use delete_entity only when the user clearly asks to remove an entity.
+- Use clear_graph with confirm=true when the user asks to delete all entities, clear the graph, reset the model, remove everything, or start over.
 - Use apply_graph_operations for pasted documents, extraction requests, or any request with multiple facts, entities, relationships, or attributes.
 
 Extraction rules:

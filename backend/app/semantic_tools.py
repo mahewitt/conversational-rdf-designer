@@ -34,6 +34,10 @@ class DeleteEntityInput(BaseModel):
     entity_id: str = Field(description="Existing entity ID to delete. Connected relationships are removed automatically.")
 
 
+class ClearGraphInput(BaseModel):
+    confirm: bool = Field(description="Must be true. Confirms the user asked to remove all entities and relationships.")
+
+
 class ExtractedEntity(BaseModel):
     name: str = Field(description="Singular entity name extracted from text.")
     kind: str = Field(default="entity", description="Entity category. Use 'measurement' for measurement concepts; otherwise use 'entity'.")
@@ -118,6 +122,20 @@ def delete_entity_tool(store: GraphStore) -> StructuredTool:
     )
 
 
+def clear_graph_tool(store: GraphStore) -> StructuredTool:
+    def clear_graph(confirm: bool) -> dict[str, int] | dict[str, str]:
+        if not confirm:
+            return {"error": "clear_graph requires confirm=true"}
+        return store.clear_graph()
+
+    return StructuredTool.from_function(
+        clear_graph,
+        name="clear_graph",
+        description="Delete every entity and relationship in the graph. Use when the user asks to delete all entities, clear the graph, reset the model, remove everything, or start over.",
+        args_schema=ClearGraphInput,
+    )
+
+
 def apply_graph_operations_tool(store: GraphStore) -> StructuredTool:
     def normalize(items: list[Any] | None) -> list[dict[str, Any]]:
         return [item.model_dump() if isinstance(item, BaseModel) else item for item in items or []]
@@ -149,5 +167,6 @@ def modelling_tools(store: GraphStore) -> list[StructuredTool]:
         add_property_tool(store),
         update_entity_tool(store),
         delete_entity_tool(store),
+        clear_graph_tool(store),
         apply_graph_operations_tool(store),
     ]
