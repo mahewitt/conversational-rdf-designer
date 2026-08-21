@@ -33,3 +33,28 @@ def test_update_entity_requires_an_existing_entity() -> None:
 
     with pytest.raises(ValueError, match="does not exist"):
         store.update_entity("missing", "Renamed")
+
+
+def test_apply_graph_operations_creates_entities_before_relationships() -> None:
+    store = GraphStore()
+
+    result = store.apply_graph_operations(
+        entities=[
+            {"name": "Facility"},
+            {"name": "Well"},
+            {"name": "Hydrocarbon"},
+            {"name": "Sensor"},
+            {"name": "Production"},
+            {"name": "Data Product"},
+        ],
+        relationships=[
+            {"source": "Facility", "predicate": "contains", "target": "Well"},
+            {"source": "Well", "predicate": "produces", "target": "Hydrocarbon"},
+            {"source": "Sensor", "predicate": "measures", "target": "Production"},
+            {"source": "Production", "predicate": "is stored in", "target": "Data Product"},
+        ],
+    )
+
+    assert {node["id"] for node in store.nodes} == {"facility", "well", "hydrocarbon", "sensor", "production", "data-product"}
+    assert len(result["relationships"]) == 4
+    assert {edge["source"] for edge in store.edges} >= {"facility", "well", "sensor", "production"}

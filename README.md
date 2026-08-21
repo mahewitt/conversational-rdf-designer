@@ -127,3 +127,15 @@ Facility contains Well
 ```
 
 That test confirms conversation turns create graph state through the same tool path used by the real LLM.
+
+## Hour 4: document extraction
+
+Document-style prompts are handled through the `apply_graph_operations` semantic tool. The model extracts a batch of entities, relationships, and attributes, then the backend applies them in dependency-safe order:
+
+```text
+1. Create all entities
+2. Create all relationships
+3. Add attributes
+```
+
+This avoids relationship failures when a model identifies a relationship before emitting the corresponding entity creation. For example, `Production is stored in Data Product` succeeds when the extracted entity batch also contains `Production` and `Data Product`.

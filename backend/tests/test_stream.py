@@ -108,6 +108,53 @@ def test_conversation_turns_create_graph(monkeypatch) -> None:
     ]
 
 
+def test_document_extraction_uses_bulk_graph_operations(monkeypatch) -> None:
+    class FakeModel:
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            if messages[-1].type == "tool":
+                return AIMessage(content="Entities and relationships have been extracted and created.")
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-extract",
+                        "name": "apply_graph_operations",
+                        "args": {
+                            "entities": [
+                                {"name": "Facility"},
+                                {"name": "Well"},
+                                {"name": "Hydrocarbon"},
+                                {"name": "Sensor"},
+                                {"name": "Production"},
+                                {"name": "Data Product"},
+                            ],
+                            "relationships": [
+                                {"source": "Facility", "predicate": "contains", "target": "Well"},
+                                {"source": "Well", "predicate": "produces", "target": "Hydrocarbon"},
+                                {"source": "Sensor", "predicate": "measures", "target": "Production"},
+                                {"source": "Production", "predicate": "is stored in", "target": "Data Product"},
+                            ],
+                        },
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(graph, "configured_model", lambda: FakeModel())
+    response = post_agent_message(
+        TestClient(app),
+        "Extract entities and relationships:\n\nA facility contains multiple wells.\nWells produce hydrocarbons.\nSensors measure production.\nProduction data is stored in a data product.",
+        run_id="extract-turn",
+        thread_id="extract-thread",
+    )
+    state = latest_state_snapshot(response.text)
+
+    assert {node["id"] for node in state["nodes"]} == {"facility", "well", "hydrocarbon", "sensor", "production", "data-product"}
+    assert {edge["label"] for edge in state["edges"]} == {"contains", "produces", "measures", "is stored in"}
+
+
 def test_missing_model_configuration_fails_loudly(monkeypatch) -> None:
     for name in ("OPENAI_ENDPOINT", "OPENAI_API_KEY", "OPENAI_DEPLOYMENT"):
         monkeypatch.delenv(name, raising=False)

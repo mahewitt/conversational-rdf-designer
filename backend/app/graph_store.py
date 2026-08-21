@@ -56,6 +56,34 @@ class GraphStore:
         node.setdefault("data", {}).setdefault("properties", {})[property_name] = value
         return node
 
+    def apply_graph_operations(
+        self,
+        entities: list[dict[str, Any]] | None = None,
+        relationships: list[dict[str, str]] | None = None,
+        attributes: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        created_entities = []
+        created_relationships = []
+        updated_entities = []
+
+        for entity in entities or []:
+            created_entities.append(self.create_entity(entity["name"], entity.get("kind", "entity")))
+
+        for relationship in relationships or []:
+            source = self.create_entity(relationship["source"])
+            target = self.create_entity(relationship["target"])
+            created_relationships.append(self.create_relationship(source["id"], relationship["predicate"], target["id"]))
+
+        for attribute in attributes or []:
+            entity = self.create_entity(attribute["entity"])
+            updated_entities.append(self.add_property(entity["id"], attribute["property"], attribute.get("value")))
+
+        return {
+            "entities": created_entities,
+            "relationships": created_relationships,
+            "attributes": updated_entities,
+        }
+
     def to_state(self) -> dict[str, list[dict[str, Any]]]:
         return {"nodes": self.nodes, "edges": self.edges}
 
