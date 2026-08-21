@@ -16,7 +16,13 @@ app.add_middleware(
 )
 
 
-agent = LangGraphAgent(name="vibegraph", graph=model_graph, emit_raw_events=False)
+agent = LangGraphAgent(
+    name="vibegraph",
+    graph=model_graph,
+    emit_raw_events=False,
+    enable_legacy_on_interrupt_event=False,
+    emit_interrupt_outcome=True,
+)
 add_langgraph_fastapi_endpoint(app, agent, path="/api/agent")
 
 

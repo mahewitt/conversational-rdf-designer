@@ -3,6 +3,7 @@
 from typing import Any
 
 from langchain_core.tools import StructuredTool
+from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from .graph_store import GraphStore
@@ -61,7 +62,7 @@ class MergeEntitiesInput(BaseModel):
 
 
 class ClearGraphInput(BaseModel):
-    confirm: bool = Field(description="Must be true. Confirms the user asked to remove all entities and relationships.")
+    reason: str = Field(description="Brief reason the user asked to clear the graph. The tool asks the human for approval before deleting anything.")
 
 
 class ExtractedEntity(BaseModel):
@@ -204,15 +205,24 @@ def merge_entities_tool(store: GraphStore) -> StructuredTool:
 
 
 def clear_graph_tool(store: GraphStore) -> StructuredTool:
-    def clear_graph(confirm: bool) -> dict[str, int] | dict[str, str]:
-        if not confirm:
-            return {"error": "clear_graph requires confirm=true"}
+    def clear_graph(reason: str) -> dict[str, int] | dict[str, bool | str]:
+        approval = interrupt(
+            {
+                "title": "Clear graph?",
+                "message": "This will delete all entities and relationships from the current graph.",
+                "reason": "clear_graph_confirmation",
+                "request_reason": reason,
+                "details": {"entities": len(store.nodes), "relationships": len(store.edges)},
+            }
+        )
+        if not isinstance(approval, dict) or approval.get("approved") is not True:
+            return {"cancelled": True, "message": "Clear graph cancelled by user."}
         return store.clear_graph()
 
     return StructuredTool.from_function(
         clear_graph,
         name="clear_graph",
-        description="Delete every entity and relationship in the graph. Use when the user asks to delete all entities, clear the graph, reset the model, remove everything, or start over.",
+        description="Request human approval to delete every entity and relationship in the graph. Use when the user asks to delete all entities, clear the graph, reset the model, remove everything, or start over. The model supplies a reason; the human supplies approval.",
         args_schema=ClearGraphInput,
     )
 

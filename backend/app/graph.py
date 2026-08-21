@@ -9,6 +9,7 @@ from langchain_core.callbacks import adispatch_custom_event
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
@@ -40,7 +41,7 @@ Tool contract:
 - Use update_relationship when the user asks to change the predicate or endpoints of an existing relationship.
 - Use merge_entities when the user says two entities are duplicates or should be the same thing.
 - Use list_graph before edits when the existing entities or relationships are unclear.
-- Use clear_graph with confirm=true when the user asks to delete all entities, clear the graph, reset the model, remove everything, or start over.
+- Use clear_graph when the user asks to delete all entities, clear the graph, reset the model, remove everything, or start over. Do not ask for confirmation yourself; the clear_graph tool requests human approval.
 - Use apply_graph_operations for pasted documents, extraction requests, or any request with multiple facts, entities, relationships, or attributes.
 
 Extraction rules:
@@ -125,6 +126,8 @@ def run_tools(state: GraphState) -> GraphState:
             continue
         try:
             result = selected_tool.invoke(call["args"])
+        except GraphInterrupt:
+            raise
         except Exception as exc:
             result = {"error": str(exc)}
         tool_messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))

@@ -156,6 +156,9 @@ def test_document_extraction_uses_bulk_graph_operations(monkeypatch) -> None:
 
 
 def test_clear_graph_tool_removes_all_graph_state(monkeypatch) -> None:
+    from app import semantic_tools
+    interrupt_payloads = []
+
     class FakeModel:
         def bind_tools(self, tools):
             return self
@@ -163,8 +166,13 @@ def test_clear_graph_tool_removes_all_graph_state(monkeypatch) -> None:
         async def ainvoke(self, messages, config=None):
             if messages[-1].type == "tool":
                 return AIMessage(content="Cleared the graph.")
-            return AIMessage(content="", tool_calls=[{"id": "call-clear", "name": "clear_graph", "args": {"confirm": True}}])
+            return AIMessage(content="", tool_calls=[{"id": "call-clear", "name": "clear_graph", "args": {"reason": "The user asked to delete all entities."}}])
 
+    def approve_interrupt(value):
+        interrupt_payloads.append(value)
+        return {"approved": True}
+
+    monkeypatch.setattr(semantic_tools, "interrupt", approve_interrupt)
     monkeypatch.setattr(graph, "configured_model", lambda: FakeModel())
     response = post_agent_message(
         TestClient(app),
@@ -185,6 +193,7 @@ def test_clear_graph_tool_removes_all_graph_state(monkeypatch) -> None:
     assert state["nodes"] == []
     assert state["edges"] == []
     assert state["rdf"] == "@prefix vg: <http://example.com/vibegraph#> .\n\n\n"
+    assert interrupt_payloads[0]["reason"] == "clear_graph_confirmation"
 
 
 def test_delete_relationship_tool_removes_edge_only(monkeypatch) -> None:
