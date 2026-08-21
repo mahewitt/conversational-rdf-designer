@@ -18,6 +18,25 @@ uv run uvicorn app.main:app --reload --port 8000
 
 The API is available at `http://localhost:8000`. Check it with `http://localhost:8000/health`.
 
+### Enable the LLM
+
+The backend uses the configured OpenAI-compatible deployment when these values are present in `backend/.env`:
+
+```dotenv
+OPENAI_ENDPOINT=https://your-openai-compatible-endpoint/
+OPENAI_API_KEY=your-key
+OPENAI_DEPLOYMENT=your-deployment
+```
+
+Then start the backend as usual:
+
+```powershell
+cd backend
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+The LangGraph agent binds the graph tools to this model, loops through model and tool nodes until the model stops requesting tools, and streams the updated graph and RDF state through AG-UI. The backend raises a clear configuration error if these values are missing, so it does not silently run a local deterministic substitute. Tests mock the model instead of calling a live deployment. Do not commit `backend/.env` or put keys in `NEXT_PUBLIC_*` variables.
+
 ## Run the frontend
 
 In a second terminal:
@@ -72,10 +91,21 @@ cd backend
 uv run pytest
 ```
 
-The current agent response is deterministic so the solution can be demonstrated without Azure OpenAI credentials. Full semantic tool abstractions, document extraction, and model-backed reasoning remain planned for hours 2-5.
+Full document extraction remains planned for hours 4-5.
 
 ## Hour-1 architecture
 
 The frontend uses `CopilotKit` and `CopilotChat` for the conversation runtime. `useCoAgent` projects the backend's shared state into the page; React Flow renders its `nodes` and `edges`, while the RDF panel renders its `rdf` field.
 
-The backend compiles a deterministic `LangGraph` state graph and exposes it through `ag-ui-langgraph` at `POST http://localhost:8000/api/agent`. The Next.js CopilotKit Runtime registers that endpoint as a server-side `HttpAgent` and exposes `/api/copilotkit` to the browser. The runtime handles agent discovery, routing, and the CopilotKit-to-AG-UI boundary. An in-memory LangGraph checkpointer provides thread state during the process lifetime; persistent storage remains out of scope for the hackathon.
+The backend compiles a `LangGraph` state graph and exposes it through `ag-ui-langgraph` at `POST http://localhost:8000/api/agent`. The graph uses a standard model/tool loop: call the model, run requested semantic tools, return to the model, and finish when there are no more tool calls. The Next.js CopilotKit Runtime registers that endpoint as a server-side `HttpAgent` and exposes `/api/copilotkit` to the browser. The runtime handles agent discovery, routing, and the CopilotKit-to-AG-UI boundary. An in-memory LangGraph checkpointer provides thread state during the process lifetime; persistent storage remains out of scope for the hackathon.
+
+## Hour 2: graph store and tools
+
+The hour-2 layer is implemented in `backend/app/graph_store.py` and `backend/app/semantic_tools.py`. `GraphStore` is the authoritative in-memory model for nodes and relationships. The semantic tools expose create entity, create relationship, add property, update entity, and delete entity operations as LangChain `StructuredTool` instances. The LangGraph modelling node invokes these tools, then derives RDF from the resulting graph state. Deleting an entity also removes its connected relationships.
+
+Run the focused hour-2 tests with:
+
+```powershell
+cd backend
+uv run pytest tests/test_graph_store.py tests/test_stream.py
+```

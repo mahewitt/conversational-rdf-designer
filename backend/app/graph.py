@@ -1,14 +1,20 @@
-"""Deterministic LangGraph model used by the hour-one AG-UI endpoint."""
+"""LangGraph agent used by the VibeGraph AG-UI endpoint."""
 
 from typing import Annotated, Any, TypedDict
 
 from ag_ui_langgraph.types import CustomEventNames
+from dotenv import load_dotenv
 from langchain_core.callbacks import adispatch_custom_event
-from langchain_core.messages import AIMessage
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from .graph_store import GraphStore
+from .semantic_tools import modelling_tools
+
+load_dotenv()
 
 
 class GraphState(TypedDict, total=False):
@@ -23,6 +29,9 @@ INITIAL_NODES = [
     {"id": "well", "type": "default", "position": {"x": 430, "y": 280}, "data": {"label": "Well", "kind": "entity"}},
 ]
 INITIAL_EDGES = [{"id": "facility-contains-well", "source": "facility", "target": "well", "label": "contains"}]
+SYSTEM_PROMPT = """You are VibeGraph, a semantic modelling assistant. Use the supplied tools to update the graph.
+Create entities before relationships. Entity IDs are lowercase hyphenated names. Use kind 'measurement' for measurements.
+Keep responses concise and explain what changed. If the request is not a modelling request, say what you can model."""
 
 
 def turtle(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> str:
@@ -42,40 +51,89 @@ def graph_from_state(state: GraphState) -> tuple[list[dict[str, Any]], list[dict
     return list(state.get("nodes", INITIAL_NODES)), list(state.get("edges", INITIAL_EDGES))
 
 
-async def model_turn(state: GraphState, config: RunnableConfig) -> GraphState:
+def configured_model():
+    """Build the configured OpenAI-compatible chat model lazily."""
+    import os
+
+    endpoint = os.getenv("OPENAI_ENDPOINT")
+    api_key = os.getenv("OPENAI_API_KEY")
+    deployment = os.getenv("OPENAI_DEPLOYMENT")
+    if not endpoint or not api_key or not deployment:
+        raise RuntimeError("OPENAI_ENDPOINT, OPENAI_API_KEY, and OPENAI_DEPLOYMENT must be configured")
+    return init_chat_model(
+        model=deployment,
+        model_provider="openai",
+        api_key=api_key,
+        base_url=endpoint,
+        temperature=0,
+    )
+
+
+async def call_model(state: GraphState, config: RunnableConfig) -> GraphState:
     nodes, edges = graph_from_state(state)
+    store = GraphStore(nodes, edges)
+    tools = {tool.name: tool for tool in modelling_tools(store)}
+
+    try:
+        response = await model_response(state, tools, config)
+    except Exception as exc:
+        return {"messages": [AIMessage(content=f"Agent run failed: {exc}")]}
+    if not isinstance(response, AIMessage):
+        response = AIMessage(content="Agent run failed: the model did not return an assistant message.")
+    return {"messages": [response]}
+
+
+async def model_response(state: GraphState, tools: dict[str, Any], config: RunnableConfig) -> AIMessage | None:
+    model = configured_model()
+    bound_model = model.bind_tools(list(tools.values()))
+    messages = [SystemMessage(content=SYSTEM_PROMPT), *state.get("messages", [])]
+    response = await bound_model.ainvoke(messages, config=config)
+    return response if isinstance(response, AIMessage) else None
+
+
+def run_tools(state: GraphState) -> GraphState:
+    nodes, edges = graph_from_state(state)
+    store = GraphStore(nodes, edges)
+    tools = {tool.name: tool for tool in modelling_tools(store)}
     latest = state.get("messages", [])[-1] if state.get("messages") else None
-    prompt = str(getattr(latest, "content", latest or "")).lower()
+    if not isinstance(latest, AIMessage) or not latest.tool_calls:
+        return {}
 
-    def add_node(node_id: str, label: str, kind: str, x: int, y: int) -> None:
-        if not any(node["id"] == node_id for node in nodes):
-            nodes.append({"id": node_id, "type": "default", "position": {"x": x, "y": y}, "data": {"label": label, "kind": kind}})
+    tool_messages = []
+    for call in latest.tool_calls:
+        selected_tool = tools.get(call["name"])
+        if selected_tool is None:
+            tool_messages.append(ToolMessage(content=f"Unknown tool: {call['name']}", tool_call_id=call["id"]))
+            continue
+        try:
+            result = selected_tool.invoke(call["args"])
+        except Exception as exc:
+            result = {"error": str(exc)}
+        tool_messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
 
-    if "facility" in prompt:
-        add_node("facility", "Facility", "entity", 120, 150)
-    if "well" in prompt:
-        add_node("well", "Well", "entity", 430, 280)
-    if "measurement" in prompt or "production" in prompt:
-        add_node("measurement", "Production Measurement", "measurement", 720, 150)
-    ids = {node["id"] for node in nodes}
-    if any(word in prompt for word in ("contain", "with", "inside")) and {"facility", "well"} <= ids:
-        if not any(edge["source"] == "facility" and edge["target"] == "well" for edge in edges):
-            edges.append({"id": "facility-contains-well", "source": "facility", "target": "well", "label": "contains"})
-    if {"well", "measurement"} <= ids and not any(edge["source"] == "well" and edge["target"] == "measurement" for edge in edges):
-        edges.append({"id": "well-produces-measurement", "source": "well", "target": "measurement", "label": "produces"})
+    return {**store.to_state(), "rdf": turtle(store.nodes, store.edges), "messages": tool_messages}
 
+
+async def emit_state(state: GraphState, config: RunnableConfig) -> GraphState:
+    nodes, edges = graph_from_state(state)
     current = {"nodes": nodes, "edges": edges, "rdf": turtle(nodes, edges)}
     await adispatch_custom_event(CustomEventNames.ManuallyEmitState, current, config=config)
-    await adispatch_custom_event(
-        CustomEventNames.ManuallyEmitMessage,
-        {"message_id": "vibegraph-status", "message": "The shared graph is ready for your next instruction."},
-        config=config,
-    )
-    return {**current, "messages": [AIMessage(content="I'm shaping that into a semantic model.")]}
+    return current
+
+
+def route_after_model(state: GraphState) -> str:
+    latest = state.get("messages", [])[-1] if state.get("messages") else None
+    if isinstance(latest, AIMessage) and latest.tool_calls:
+        return "run_tools"
+    return "emit_state"
 
 
 builder = StateGraph(GraphState)
-builder.add_node("model_turn", model_turn)
-builder.add_edge(START, "model_turn")
-builder.add_edge("model_turn", END)
+builder.add_node("call_model", call_model)
+builder.add_node("run_tools", run_tools)
+builder.add_node("emit_state", emit_state)
+builder.add_edge(START, "call_model")
+builder.add_conditional_edges("call_model", route_after_model, {"run_tools": "run_tools", "emit_state": "emit_state"})
+builder.add_edge("run_tools", "call_model")
+builder.add_edge("emit_state", END)
 model_graph = builder.compile(checkpointer=MemorySaver())
