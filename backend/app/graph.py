@@ -24,11 +24,8 @@ class GraphState(TypedDict, total=False):
     rdf: str
 
 
-INITIAL_NODES = [
-    {"id": "facility", "type": "default", "position": {"x": 120, "y": 150}, "data": {"label": "Facility", "kind": "entity"}},
-    {"id": "well", "type": "default", "position": {"x": 430, "y": 280}, "data": {"label": "Well", "kind": "entity"}},
-]
-INITIAL_EDGES = [{"id": "facility-contains-well", "source": "facility", "target": "well", "label": "contains"}]
+INITIAL_NODES: list[dict[str, Any]] = []
+INITIAL_EDGES: list[dict[str, Any]] = []
 SYSTEM_PROMPT = """You are VibeGraph, a semantic modelling assistant. Use the supplied tools to update the graph.
 Create entities before relationships. Entity IDs are lowercase hyphenated names. Use kind 'measurement' for measurements.
 Keep responses concise and explain what changed. If the request is not a modelling request, say what you can model."""

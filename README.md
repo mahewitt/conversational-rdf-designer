@@ -109,3 +109,21 @@ Run the focused hour-2 tests with:
 cd backend
 uv run pytest tests/test_graph_store.py tests/test_stream.py
 ```
+
+## Hour 3: LangGraph agent
+
+The hour-3 agent is implemented as a LangGraph model/tool loop in `backend/app/graph.py`:
+
+```text
+call_model -> run_tools -> call_model -> emit_state
+```
+
+The model receives the conversation messages and the system prompt, can call semantic tools, and loops until it returns a final assistant message with no further tool calls. The final `emit_state` node publishes the updated graph and RDF state through AG-UI. The backend tests mock the model to verify the required conversation flow:
+
+```text
+Create Facility
+Create Well
+Facility contains Well
+```
+
+That test confirms conversation turns create graph state through the same tool path used by the real LLM.
