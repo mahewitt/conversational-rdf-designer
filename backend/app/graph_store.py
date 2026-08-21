@@ -33,6 +33,13 @@ class GraphStore:
             node.setdefault("data", {}).setdefault("properties", {}).update(properties)
         return node
 
+    def set_entity_kind(self, entity_id: str, kind: str) -> dict[str, Any]:
+        node = self._node(entity_id)
+        if not node:
+            raise ValueError(f"Entity '{entity_id}' does not exist")
+        node.setdefault("data", {})["kind"] = kind
+        return node
+
     def delete_entity(self, entity_id: str) -> None:
         if not self._node(entity_id):
             raise ValueError(f"Entity '{entity_id}' does not exist")
@@ -55,6 +62,52 @@ class GraphStore:
         edge = {"id": f"{source}-{predicate}-{target}-{uuid4().hex[:6]}", "source": source, "target": target, "label": predicate}
         self.edges.append(edge)
         return edge
+
+    def delete_relationship(self, source: str, predicate: str, target: str) -> dict[str, int]:
+        before = len(self.edges)
+        self.edges = [edge for edge in self.edges if not (edge["source"] == source and edge["target"] == target and edge["label"] == predicate)]
+        return {"deleted_relationships": before - len(self.edges)}
+
+    def update_relationship(
+        self,
+        source: str,
+        predicate: str,
+        target: str,
+        new_predicate: str | None = None,
+        new_source: str | None = None,
+        new_target: str | None = None,
+    ) -> dict[str, Any]:
+        edge = next((item for item in self.edges if item["source"] == source and item["target"] == target and item["label"] == predicate), None)
+        if not edge:
+            raise ValueError(f"Relationship '{source} {predicate} {target}' does not exist")
+        if new_source and not self._node(new_source):
+            raise ValueError(f"Entity '{new_source}' does not exist")
+        if new_target and not self._node(new_target):
+            raise ValueError(f"Entity '{new_target}' does not exist")
+        edge["source"] = new_source or edge["source"]
+        edge["target"] = new_target or edge["target"]
+        edge["label"] = new_predicate or edge["label"]
+        return edge
+
+    def merge_entities(self, source_entity_id: str, target_entity_id: str, merged_name: str | None = None) -> dict[str, Any]:
+        source = self._node(source_entity_id)
+        target = self._node(target_entity_id)
+        if not source or not target:
+            raise ValueError("Both merge entities must exist")
+        if source_entity_id == target_entity_id:
+            return target
+        source_properties = source.get("data", {}).get("properties", {})
+        target.setdefault("data", {}).setdefault("properties", {}).update(source_properties)
+        if merged_name:
+            target["data"]["label"] = merged_name
+        for edge in self.edges:
+            if edge["source"] == source_entity_id:
+                edge["source"] = target_entity_id
+            if edge["target"] == source_entity_id:
+                edge["target"] = target_entity_id
+        self.nodes = [node for node in self.nodes if node["id"] != source_entity_id]
+        self.edges = self._deduplicate_edges([edge for edge in self.edges if edge["source"] != edge["target"]])
+        return target
 
     def add_property(self, entity_id: str, property_name: str, value: Any = None) -> dict[str, Any]:
         node = self._node(entity_id)
@@ -94,8 +147,23 @@ class GraphStore:
     def to_state(self) -> dict[str, list[dict[str, Any]]]:
         return {"nodes": self.nodes, "edges": self.edges}
 
+    def list_graph(self) -> dict[str, list[dict[str, Any]]]:
+        return self.to_state()
+
     def _node(self, entity_id: str) -> dict[str, Any] | None:
         return next((node for node in self.nodes if node["id"] == entity_id), None)
+
+    @staticmethod
+    def _deduplicate_edges(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen = set()
+        unique_edges = []
+        for edge in edges:
+            key = (edge["source"], edge["label"], edge["target"])
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_edges.append(edge)
+        return unique_edges
 
     @staticmethod
     def _identifier(name: str) -> str:

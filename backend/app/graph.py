@@ -34,7 +34,12 @@ Tool contract:
 - Use create_relationship only when both endpoint entities already exist in graph state or were created by an earlier tool call.
 - Use add_property for attributes on an existing entity.
 - Use update_entity for rename/refinement requests.
+- Use set_entity_kind when the user corrects an entity category without renaming it.
 - Use delete_entity only when the user clearly asks to remove an entity.
+- Use delete_relationship when the user asks to remove, unlink, or negate one relationship without deleting entities.
+- Use update_relationship when the user asks to change the predicate or endpoints of an existing relationship.
+- Use merge_entities when the user says two entities are duplicates or should be the same thing.
+- Use list_graph before edits when the existing entities or relationships are unclear.
 - Use clear_graph with confirm=true when the user asks to delete all entities, clear the graph, reset the model, remove everything, or start over.
 - Use apply_graph_operations for pasted documents, extraction requests, or any request with multiple facts, entities, relationships, or attributes.
 

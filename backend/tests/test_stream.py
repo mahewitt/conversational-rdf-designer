@@ -187,6 +187,88 @@ def test_clear_graph_tool_removes_all_graph_state(monkeypatch) -> None:
     assert state["rdf"] == "@prefix vg: <http://example.com/vibegraph#> .\n\n\n"
 
 
+def test_delete_relationship_tool_removes_edge_only(monkeypatch) -> None:
+    class FakeModel:
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            if messages[-1].type == "tool":
+                return AIMessage(content="Removed the contains relationship.")
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {"id": "call-delete-relationship", "name": "delete_relationship", "args": {"source": "facility", "predicate": "contains", "target": "well"}}
+                ],
+            )
+
+    monkeypatch.setattr(graph, "configured_model", lambda: FakeModel())
+    response = post_agent_message(
+        TestClient(app),
+        "Facility should not contain Well",
+        state={
+            "nodes": [
+                {"id": "facility", "type": "default", "position": {"x": 0, "y": 0}, "data": {"label": "Facility", "kind": "entity"}},
+                {"id": "well", "type": "default", "position": {"x": 100, "y": 0}, "data": {"label": "Well", "kind": "entity"}},
+            ],
+            "edges": [{"id": "facility-contains-well", "source": "facility", "target": "well", "label": "contains"}],
+            "rdf": "existing",
+        },
+        run_id="delete-relationship-turn",
+        thread_id="delete-relationship-thread",
+    )
+    state = latest_state_snapshot(response.text)
+
+    assert {node["id"] for node in state["nodes"]} == {"facility", "well"}
+    assert state["edges"] == []
+
+
+def test_merge_entities_tool_rewires_graph_state(monkeypatch) -> None:
+    class FakeModel:
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            if messages[-1].type == "tool":
+                return AIMessage(content="Merged duplicate production entities.")
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-merge",
+                        "name": "merge_entities",
+                        "args": {"source_entity_id": "production", "target_entity_id": "production-data", "merged_name": "Production Data"},
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(graph, "configured_model", lambda: FakeModel())
+    response = post_agent_message(
+        TestClient(app),
+        "Production and Production Data are the same thing",
+        state={
+            "nodes": [
+                {"id": "production", "type": "default", "position": {"x": 0, "y": 0}, "data": {"label": "Production", "kind": "entity"}},
+                {"id": "production-data", "type": "default", "position": {"x": 100, "y": 0}, "data": {"label": "Production Data", "kind": "entity"}},
+                {"id": "data-product", "type": "default", "position": {"x": 200, "y": 0}, "data": {"label": "Data Product", "kind": "entity"}},
+            ],
+            "edges": [
+                {"id": "production-stored", "source": "production", "target": "data-product", "label": "is stored in"},
+                {"id": "production-data-stored", "source": "production-data", "target": "data-product", "label": "is stored in"},
+            ],
+            "rdf": "existing",
+        },
+        run_id="merge-turn",
+        thread_id="merge-thread",
+    )
+    state = latest_state_snapshot(response.text)
+
+    assert {node["id"] for node in state["nodes"]} == {"production-data", "data-product"}
+    assert [{"source": edge["source"], "label": edge["label"], "target": edge["target"]} for edge in state["edges"]] == [
+        {"source": "production-data", "label": "is stored in", "target": "data-product"}
+    ]
+
+
 def test_missing_model_configuration_fails_loudly(monkeypatch) -> None:
     for name in ("OPENAI_ENDPOINT", "OPENAI_API_KEY", "OPENAI_DEPLOYMENT"):
         monkeypatch.delenv(name, raising=False)

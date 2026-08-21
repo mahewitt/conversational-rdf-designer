@@ -30,8 +30,34 @@ class UpdateEntityInput(BaseModel):
     name: str | None = Field(default=None, description="New display label for the entity.")
 
 
+class SetEntityKindInput(BaseModel):
+    entity_id: str = Field(description="Existing entity ID to update.")
+    kind: str = Field(description="New entity kind, for example 'entity', 'measurement', 'data_product', 'source_system', or 'quality_rule'.")
+
+
 class DeleteEntityInput(BaseModel):
     entity_id: str = Field(description="Existing entity ID to delete. Connected relationships are removed automatically.")
+
+
+class DeleteRelationshipInput(BaseModel):
+    source: str = Field(description="Existing source entity ID, for example 'facility'.")
+    predicate: str = Field(description="Relationship phrase to remove, for example 'contains'.")
+    target: str = Field(description="Existing target entity ID, for example 'well'.")
+
+
+class UpdateRelationshipInput(BaseModel):
+    source: str = Field(description="Current source entity ID of the relationship to update.")
+    predicate: str = Field(description="Current relationship phrase to update.")
+    target: str = Field(description="Current target entity ID of the relationship to update.")
+    new_predicate: str | None = Field(default=None, description="Replacement relationship phrase, if changing the predicate.")
+    new_source: str | None = Field(default=None, description="Replacement source entity ID, if changing the source endpoint.")
+    new_target: str | None = Field(default=None, description="Replacement target entity ID, if changing the target endpoint.")
+
+
+class MergeEntitiesInput(BaseModel):
+    source_entity_id: str = Field(description="Entity ID to merge away. Its relationships will be rewired to the target entity.")
+    target_entity_id: str = Field(description="Entity ID that remains after the merge.")
+    merged_name: str | None = Field(default=None, description="Optional final display label for the surviving target entity.")
 
 
 class ClearGraphInput(BaseModel):
@@ -109,6 +135,18 @@ def update_entity_tool(store: GraphStore) -> StructuredTool:
     )
 
 
+def set_entity_kind_tool(store: GraphStore) -> StructuredTool:
+    def set_entity_kind(entity_id: str, kind: str) -> dict[str, Any]:
+        return store.set_entity_kind(entity_id, kind)
+
+    return StructuredTool.from_function(
+        set_entity_kind,
+        name="set_entity_kind",
+        description="Change the kind/category of an existing entity without renaming it. Use when the user says an entity should be a measurement, data product, source system, quality rule, or similar category.",
+        args_schema=SetEntityKindInput,
+    )
+
+
 def delete_entity_tool(store: GraphStore) -> StructuredTool:
     def delete_entity(entity_id: str) -> dict[str, str]:
         store.delete_entity(entity_id)
@@ -119,6 +157,49 @@ def delete_entity_tool(store: GraphStore) -> StructuredTool:
         name="delete_entity",
         description="Delete one existing entity and automatically remove its connected relationships.",
         args_schema=DeleteEntityInput,
+    )
+
+
+def delete_relationship_tool(store: GraphStore) -> StructuredTool:
+    def delete_relationship(source: str, predicate: str, target: str) -> dict[str, int]:
+        return store.delete_relationship(source, predicate, target)
+
+    return StructuredTool.from_function(
+        delete_relationship,
+        name="delete_relationship",
+        description="Delete one relationship without deleting either entity. Use when the user asks to remove, unlink, or negate a specific relationship such as 'Facility should not contain Well'. Returns the number of deleted relationships.",
+        args_schema=DeleteRelationshipInput,
+    )
+
+
+def update_relationship_tool(store: GraphStore) -> StructuredTool:
+    def update_relationship(
+        source: str,
+        predicate: str,
+        target: str,
+        new_predicate: str | None = None,
+        new_source: str | None = None,
+        new_target: str | None = None,
+    ) -> dict[str, Any]:
+        return store.update_relationship(source, predicate, target, new_predicate, new_source, new_target)
+
+    return StructuredTool.from_function(
+        update_relationship,
+        name="update_relationship",
+        description="Update one existing relationship without deleting entities. Use for requests such as 'change contains to owns' or 'make Facility supply Well instead'. Identify the existing relationship by source, predicate, and target.",
+        args_schema=UpdateRelationshipInput,
+    )
+
+
+def merge_entities_tool(store: GraphStore) -> StructuredTool:
+    def merge_entities(source_entity_id: str, target_entity_id: str, merged_name: str | None = None) -> dict[str, Any]:
+        return store.merge_entities(source_entity_id, target_entity_id, merged_name)
+
+    return StructuredTool.from_function(
+        merge_entities,
+        name="merge_entities",
+        description="Merge duplicate entities. The source entity is removed, its relationships are rewired to the target entity, and source properties are copied to the target.",
+        args_schema=MergeEntitiesInput,
     )
 
 
@@ -160,13 +241,29 @@ def apply_graph_operations_tool(store: GraphStore) -> StructuredTool:
     )
 
 
+def list_graph_tool(store: GraphStore) -> StructuredTool:
+    def list_graph() -> dict[str, list[dict[str, Any]]]:
+        return store.list_graph()
+
+    return StructuredTool.from_function(
+        list_graph,
+        name="list_graph",
+        description="Read the current graph state without changing it. Use before edits when the current entities or relationships are unclear.",
+    )
+
+
 def modelling_tools(store: GraphStore) -> list[StructuredTool]:
     return [
         create_entity_tool(store),
         create_relationship_tool(store),
         add_property_tool(store),
         update_entity_tool(store),
+        set_entity_kind_tool(store),
         delete_entity_tool(store),
+        delete_relationship_tool(store),
+        update_relationship_tool(store),
+        merge_entities_tool(store),
         clear_graph_tool(store),
         apply_graph_operations_tool(store),
+        list_graph_tool(store),
     ]
