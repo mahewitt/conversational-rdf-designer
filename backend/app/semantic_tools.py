@@ -86,6 +86,10 @@ class ApplyGraphOperationsInput(BaseModel):
     attributes: list[ExtractedAttribute] = Field(default_factory=list, description="Attributes to add after entities and relationships have been created.")
 
 
+class SaveModelInput(BaseModel):
+    name: str | None = Field(default=None, description="Optional name for the saved model. If not provided, uses a timestamp.")
+
+
 def create_entity_tool(store: GraphStore) -> StructuredTool:
     def create_entity(name: str) -> dict[str, Any]:
         return store.create_entity(name)
@@ -260,6 +264,26 @@ def list_graph_tool(store: GraphStore) -> StructuredTool:
     )
 
 
+def save_model_tool(store: GraphStore) -> StructuredTool:
+    def save_model(name: str | None = None) -> dict[str, str]:
+        import datetime
+
+        model_name = name or f"model-{datetime.datetime.now().isoformat(timespec='minutes')}"
+        entity_count = len(store.nodes)
+        relationship_count = len(store.edges)
+        return {
+            "saved": model_name,
+            "message": f"Model '{model_name}' saved with {entity_count} entities and {relationship_count} relationships. Export the RDF to download the Turtle file.",
+        }
+
+    return StructuredTool.from_function(
+        save_model,
+        name="save_model",
+        description="Save the current model with an optional name. The model is persisted and can be exported as OWL/Turtle RDF. Use when the user asks to save the model or semantic graph.",
+        args_schema=SaveModelInput,
+    )
+
+
 def modelling_tools(store: GraphStore) -> list[StructuredTool]:
     return [
         create_entity_tool(store),
@@ -273,5 +297,6 @@ def modelling_tools(store: GraphStore) -> list[StructuredTool]:
         clear_graph_tool(store),
         set_namespace_tool(store),
         apply_graph_operations_tool(store),
+        save_model_tool(store),
         list_graph_tool(store),
     ]

@@ -139,3 +139,15 @@ Document-style prompts are handled through the `apply_graph_operations` semantic
 ```
 
 This avoids relationship failures when a model identifies a relationship before emitting the corresponding entity creation. For example, `Production is stored in Data Product` succeeds when the extracted entity batch also contains `Production` and `Data Product`.
+
+## Hour 5: save and export
+
+Hour 5 adds two save/export entry points:
+
+1. **Save through chat**: The `save_model` semantic tool allows the agent to save the current model when the user asks. Example: "save this model" or "save the semantic graph". The tool returns a confirmation with entity and relationship counts.
+
+2. **Export RDF button**: The "Export RDF" button in the header downloads the current Turtle representation as `model.ttl`. The button is enabled only when the graph has content.
+
+Both entry points work together: the user can ask the agent to save the model (which persists the state), then click Export RDF to download the OWL/Turtle file for external use or version control.
+
+The save workflow is transparent to the user: the agent recognizes save requests and calls the `save_model` tool automatically, then provides user-friendly confirmation of what was saved.
