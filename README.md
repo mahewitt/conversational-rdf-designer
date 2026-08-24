@@ -1,6 +1,6 @@
 # VibeGraph
 
-VibeGraph is a conversational semantic modelling prototype. This repository contains the **hour-1 solution** from the hackathon proposal: a CopilotKit chat connected to a deterministic LangGraph agent through the AG-UI protocol, a React Flow shared graph canvas, and a live RDF state preview.
+VibeGraph is a conversational semantic modelling prototype. This repository contains the **hour-1 solution** from the hackathon proposal: a CopilotKit chat connected to a LangGraph agent through the AG-UI protocol, a React Flow shared graph canvas, and a live OWL/Turtle state preview.
 
 ## Prerequisites
 
@@ -47,7 +47,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`, type a modelling instruction, and send it. CopilotKit talks to the local Next.js runtime route, which forwards the AG-UI request to the Python LangGraph agent. Assistant messages and shared graph state stream back through the runtime; the canvas and RDF preview update from that state.
+Open `http://localhost:3000`, type a modelling instruction, and send it. CopilotKit talks to the local Next.js runtime route, which forwards the AG-UI request to the Python LangGraph agent. Assistant messages and shared graph state stream back through the runtime; the canvas and OWL/Turtle preview update from that state.
 
 ## Development versus deployment
 

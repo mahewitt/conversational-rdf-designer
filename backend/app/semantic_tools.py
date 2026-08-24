@@ -11,7 +11,6 @@ from .graph_store import GraphStore
 
 class CreateEntityInput(BaseModel):
     name: str = Field(description="Singular business name for the entity, for example 'Facility' or 'Data Product'.")
-    kind: str = Field(default="entity", description="Entity category. Use 'measurement' only for measurement concepts; otherwise use 'entity'.")
 
 
 class CreateRelationshipInput(BaseModel):
@@ -29,11 +28,6 @@ class AddPropertyInput(BaseModel):
 class UpdateEntityInput(BaseModel):
     entity_id: str = Field(description="Existing entity ID to update.")
     name: str | None = Field(default=None, description="New display label for the entity.")
-
-
-class SetEntityKindInput(BaseModel):
-    entity_id: str = Field(description="Existing entity ID to update.")
-    kind: str = Field(description="New entity kind, for example 'entity', 'measurement', 'data_product', 'source_system', or 'quality_rule'.")
 
 
 class DeleteEntityInput(BaseModel):
@@ -65,9 +59,13 @@ class ClearGraphInput(BaseModel):
     reason: str = Field(description="Brief reason the user asked to clear the graph. The tool asks the human for approval before deleting anything.")
 
 
+class SetNamespaceInput(BaseModel):
+    prefix: str = Field(description="Short Turtle prefix to use for generated OWL entities, for example 'prod' or 'oil'. Do not include the trailing colon.")
+    namespace: str = Field(description="Base IRI namespace for generated OWL entities, for example 'https://example.com/model/production#'.")
+
+
 class ExtractedEntity(BaseModel):
     name: str = Field(description="Singular entity name extracted from text.")
-    kind: str = Field(default="entity", description="Entity category. Use 'measurement' for measurement concepts; otherwise use 'entity'.")
 
 
 class ExtractedRelationship(BaseModel):
@@ -89,8 +87,8 @@ class ApplyGraphOperationsInput(BaseModel):
 
 
 def create_entity_tool(store: GraphStore) -> StructuredTool:
-    def create_entity(name: str, kind: str = "entity") -> dict[str, Any]:
-        return store.create_entity(name, kind)
+    def create_entity(name: str) -> dict[str, Any]:
+        return store.create_entity(name)
 
     return StructuredTool.from_function(
         create_entity,
@@ -133,18 +131,6 @@ def update_entity_tool(store: GraphStore) -> StructuredTool:
         name="update_entity",
         description="Rename or update one existing entity. Use this for refinement requests such as 'Rename Well to Production Well'.",
         args_schema=UpdateEntityInput,
-    )
-
-
-def set_entity_kind_tool(store: GraphStore) -> StructuredTool:
-    def set_entity_kind(entity_id: str, kind: str) -> dict[str, Any]:
-        return store.set_entity_kind(entity_id, kind)
-
-    return StructuredTool.from_function(
-        set_entity_kind,
-        name="set_entity_kind",
-        description="Change the kind/category of an existing entity without renaming it. Use when the user says an entity should be a measurement, data product, source system, quality rule, or similar category.",
-        args_schema=SetEntityKindInput,
     )
 
 
@@ -227,6 +213,18 @@ def clear_graph_tool(store: GraphStore) -> StructuredTool:
     )
 
 
+def set_namespace_tool(store: GraphStore) -> StructuredTool:
+    def set_namespace(prefix: str, namespace: str) -> dict[str, str]:
+        return store.set_namespace(prefix, namespace)
+
+    return StructuredTool.from_function(
+        set_namespace,
+        name="set_namespace",
+        description="Set the Turtle prefix and namespace used for generated OWL classes and properties. Use when the user asks to change the namespace, base IRI, entity IRI namespace, or prefix.",
+        args_schema=SetNamespaceInput,
+    )
+
+
 def apply_graph_operations_tool(store: GraphStore) -> StructuredTool:
     def normalize(items: list[Any] | None) -> list[dict[str, Any]]:
         return [item.model_dump() if isinstance(item, BaseModel) else item for item in items or []]
@@ -268,12 +266,12 @@ def modelling_tools(store: GraphStore) -> list[StructuredTool]:
         create_relationship_tool(store),
         add_property_tool(store),
         update_entity_tool(store),
-        set_entity_kind_tool(store),
         delete_entity_tool(store),
         delete_relationship_tool(store),
         update_relationship_tool(store),
         merge_entities_tool(store),
         clear_graph_tool(store),
+        set_namespace_tool(store),
         apply_graph_operations_tool(store),
         list_graph_tool(store),
     ]

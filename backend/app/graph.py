@@ -24,10 +24,12 @@ class GraphState(TypedDict, total=False):
     nodes: list[dict[str, Any]]
     edges: list[dict[str, Any]]
     rdf: str
+    namespace: dict[str, str]
 
 
 INITIAL_NODES: list[dict[str, Any]] = []
 INITIAL_EDGES: list[dict[str, Any]] = []
+DEFAULT_NAMESPACE = {"prefix": "vg", "namespace": "http://example.com/vibegraph#"}
 SYSTEM_PROMPT = """You are VibeGraph, a semantic modelling assistant. Convert business language into graph operations.
 
 Tool contract:
@@ -35,39 +37,62 @@ Tool contract:
 - Use create_relationship only when both endpoint entities already exist in graph state or were created by an earlier tool call.
 - Use add_property for attributes on an existing entity.
 - Use update_entity for rename/refinement requests.
-- Use set_entity_kind when the user corrects an entity category without renaming it.
 - Use delete_entity only when the user clearly asks to remove an entity.
 - Use delete_relationship when the user asks to remove, unlink, or negate one relationship without deleting entities.
 - Use update_relationship when the user asks to change the predicate or endpoints of an existing relationship.
 - Use merge_entities when the user says two entities are duplicates or should be the same thing.
 - Use list_graph before edits when the existing entities or relationships are unclear.
 - Use clear_graph when the user asks to delete all entities, clear the graph, reset the model, remove everything, or start over. Do not ask for confirmation yourself; the clear_graph tool requests human approval.
+- Use set_namespace when the user asks to change the OWL/Turtle prefix, namespace, base IRI, or entity IRI namespace.
 - Use apply_graph_operations for pasted documents, extraction requests, or any request with multiple facts, entities, relationships, or attributes.
 
 Extraction rules:
 - For apply_graph_operations, include every entity referenced by every relationship in the entities list.
 - Prefer singular entity names: Well, Hydrocarbon, Sensor, Data Product.
 - Create entities before relationships by using apply_graph_operations rather than many separate relationship calls.
-- Use kind 'measurement' only for measurement concepts; otherwise use kind 'entity'.
 
 Keep responses concise and explain what changed. If the request is not a modelling request, say what you can model."""
 
 
-def turtle(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> str:
-    lines = ["@prefix vg: <http://example.com/vibegraph#> .", ""]
+def owl_turtle(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], namespace_config: dict[str, str] | None = None) -> str:
+    namespace_config = namespace_config or DEFAULT_NAMESPACE
+    prefix = namespace_config.get("prefix") or DEFAULT_NAMESPACE["prefix"]
+    namespace = namespace_config.get("namespace") or DEFAULT_NAMESPACE["namespace"]
+    lines = [
+        f"@prefix {prefix}: <{namespace}> .",
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .",
+        "@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .",
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
+        "",
+        f"<{namespace}> a owl:Ontology .",
+        "",
+    ]
     for node in nodes:
         identifier = node["id"].replace("-", "_")
-        kind = node.get("data", {}).get("kind", "entity").title()
-        lines.append(f"vg:{identifier} a vg:{kind} .")
+        label = node.get("data", {}).get("label", node["id"])
+        lines.append(f'{prefix}:{identifier} a owl:Class ;')
+        lines.append(f'    rdfs:label "{label}" .')
     lines.append("")
     for edge in edges:
         predicate = edge["label"].replace(" ", "_")
-        lines.append(f"vg:{edge['source']} vg:{predicate} vg:{edge['target']} .")
+        source = edge["source"].replace("-", "_")
+        target = edge["target"].replace("-", "_")
+        lines.append(f"{prefix}:{predicate} a owl:ObjectProperty ;")
+        lines.append(f"    rdfs:domain {prefix}:{source} ;")
+        lines.append(f"    rdfs:range {prefix}:{target} .")
     return "\n".join(lines) + "\n"
+
+
+def turtle(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> str:
+    return owl_turtle(nodes, edges)
 
 
 def graph_from_state(state: GraphState) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     return list(state.get("nodes", INITIAL_NODES)), list(state.get("edges", INITIAL_EDGES))
+
+
+def namespace_from_state(state: GraphState) -> dict[str, str]:
+    return dict(state.get("namespace", DEFAULT_NAMESPACE))
 
 
 def configured_model():
@@ -90,7 +115,7 @@ def configured_model():
 
 async def call_model(state: GraphState, config: RunnableConfig) -> GraphState:
     nodes, edges = graph_from_state(state)
-    store = GraphStore(nodes, edges)
+    store = GraphStore(nodes, edges, namespace_from_state(state))
     tools = {tool.name: tool for tool in modelling_tools(store)}
 
     try:
@@ -112,7 +137,7 @@ async def model_response(state: GraphState, tools: dict[str, Any], config: Runna
 
 def run_tools(state: GraphState) -> GraphState:
     nodes, edges = graph_from_state(state)
-    store = GraphStore(nodes, edges)
+    store = GraphStore(nodes, edges, namespace_from_state(state))
     tools = {tool.name: tool for tool in modelling_tools(store)}
     latest = state.get("messages", [])[-1] if state.get("messages") else None
     if not isinstance(latest, AIMessage) or not latest.tool_calls:
@@ -132,12 +157,13 @@ def run_tools(state: GraphState) -> GraphState:
             result = {"error": str(exc)}
         tool_messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
 
-    return {**store.to_state(), "rdf": turtle(store.nodes, store.edges), "messages": tool_messages}
+    return {**store.to_state(), "rdf": owl_turtle(store.nodes, store.edges, store.namespace), "messages": tool_messages}
 
 
 async def emit_state(state: GraphState, config: RunnableConfig) -> GraphState:
     nodes, edges = graph_from_state(state)
-    current = {"nodes": nodes, "edges": edges, "rdf": turtle(nodes, edges)}
+    namespace = namespace_from_state(state)
+    current = {"nodes": nodes, "edges": edges, "namespace": namespace, "rdf": owl_turtle(nodes, edges, namespace)}
     await adispatch_custom_event(CustomEventNames.ManuallyEmitState, current, config=config)
     return current
 

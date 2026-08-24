@@ -71,15 +71,6 @@ def test_update_entity_requires_an_existing_entity() -> None:
         store.update_entity("missing", "Renamed")
 
 
-def test_set_entity_kind_updates_category() -> None:
-    store = GraphStore()
-    store.create_entity("Production")
-
-    node = store.set_entity_kind("production", "measurement")
-
-    assert node["data"]["kind"] == "measurement"
-
-
 def test_update_relationship_changes_predicate() -> None:
     store = GraphStore()
     facility = store.create_entity("Facility")
@@ -116,6 +107,15 @@ def test_list_graph_returns_current_state() -> None:
     store.create_entity("Facility")
 
     assert store.list_graph() == store.to_state()
+
+
+def test_set_namespace_updates_prefix_and_namespace() -> None:
+    store = GraphStore()
+
+    namespace = store.set_namespace("prod:", "https://example.com/production")
+
+    assert namespace == {"prefix": "prod", "namespace": "https://example.com/production#"}
+    assert store.to_state()["namespace"] == namespace
 
 
 def test_apply_graph_operations_creates_entities_before_relationships() -> None:

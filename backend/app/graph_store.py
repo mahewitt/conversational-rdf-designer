@@ -5,11 +5,17 @@ from uuid import uuid4
 
 
 class GraphStore:
-    def __init__(self, nodes: list[dict[str, Any]] | None = None, edges: list[dict[str, Any]] | None = None):
+    def __init__(
+        self,
+        nodes: list[dict[str, Any]] | None = None,
+        edges: list[dict[str, Any]] | None = None,
+        namespace: dict[str, str] | None = None,
+    ):
         self.nodes = [dict(node) for node in (nodes or [])]
         self.edges = [dict(edge) for edge in (edges or [])]
+        self.namespace = namespace or {"prefix": "vg", "namespace": "http://example.com/vibegraph#"}
 
-    def create_entity(self, name: str, kind: str = "entity", position: dict[str, int] | None = None) -> dict[str, Any]:
+    def create_entity(self, name: str, position: dict[str, int] | None = None) -> dict[str, Any]:
         node_id = self._identifier(name)
         existing = self._node(node_id)
         if existing:
@@ -18,7 +24,7 @@ class GraphStore:
             "id": node_id,
             "type": "default",
             "position": position or {"x": 160 + len(self.nodes) * 280, "y": 170},
-            "data": {"label": name, "kind": kind},
+            "data": {"label": name},
         }
         self.nodes.append(node)
         return node
@@ -33,13 +39,6 @@ class GraphStore:
             node.setdefault("data", {}).setdefault("properties", {}).update(properties)
         return node
 
-    def set_entity_kind(self, entity_id: str, kind: str) -> dict[str, Any]:
-        node = self._node(entity_id)
-        if not node:
-            raise ValueError(f"Entity '{entity_id}' does not exist")
-        node.setdefault("data", {})["kind"] = kind
-        return node
-
     def delete_entity(self, entity_id: str) -> None:
         if not self._node(entity_id):
             raise ValueError(f"Entity '{entity_id}' does not exist")
@@ -52,6 +51,18 @@ class GraphStore:
         self.nodes = []
         self.edges = []
         return {"deleted_entities": deleted_entities, "deleted_relationships": deleted_relationships}
+
+    def set_namespace(self, prefix: str, namespace: str) -> dict[str, str]:
+        clean_prefix = prefix.strip().rstrip(":")
+        clean_namespace = namespace.strip()
+        if not clean_prefix:
+            raise ValueError("Namespace prefix is required")
+        if not clean_namespace:
+            raise ValueError("Namespace IRI is required")
+        if not clean_namespace.endswith(('/', '#')):
+            clean_namespace = f"{clean_namespace}#"
+        self.namespace = {"prefix": clean_prefix, "namespace": clean_namespace}
+        return self.namespace
 
     def create_relationship(self, source: str, predicate: str, target: str) -> dict[str, Any]:
         if not self._node(source) or not self._node(target):
@@ -127,7 +138,7 @@ class GraphStore:
         updated_entities = []
 
         for entity in entities or []:
-            created_entities.append(self.create_entity(entity["name"], entity.get("kind", "entity")))
+            created_entities.append(self.create_entity(entity["name"]))
 
         for relationship in relationships or []:
             source = self.create_entity(relationship["source"])
@@ -144,8 +155,8 @@ class GraphStore:
             "attributes": updated_entities,
         }
 
-    def to_state(self) -> dict[str, list[dict[str, Any]]]:
-        return {"nodes": self.nodes, "edges": self.edges}
+    def to_state(self) -> dict[str, Any]:
+        return {"nodes": self.nodes, "edges": self.edges, "namespace": self.namespace}
 
     def list_graph(self) -> dict[str, list[dict[str, Any]]]:
         return self.to_state()

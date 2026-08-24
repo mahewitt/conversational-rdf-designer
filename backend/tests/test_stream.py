@@ -49,8 +49,8 @@ def test_agent_stream_returns_shared_graph_event(monkeypatch) -> None:
                 return AIMessage(
                     content="",
                     tool_calls=[
-                        {"id": "call-1", "name": "create_entity", "args": {"name": "Facility", "kind": "entity"}},
-                        {"id": "call-2", "name": "create_entity", "args": {"name": "Well", "kind": "entity"}},
+                        {"id": "call-1", "name": "create_entity", "args": {"name": "Facility"}},
+                        {"id": "call-2", "name": "create_entity", "args": {"name": "Well"}},
                         {
                             "id": "call-3",
                             "name": "create_relationship",
@@ -87,8 +87,8 @@ def test_conversation_turns_create_graph(monkeypatch) -> None:
                     tool_calls=[{"id": "call-relationship", "name": "create_relationship", "args": {"source": "facility", "predicate": "contains", "target": "well"}}],
                 )
             if "well" in prompt:
-                return AIMessage(content="", tool_calls=[{"id": "call-well", "name": "create_entity", "args": {"name": "Well", "kind": "entity"}}])
-            return AIMessage(content="", tool_calls=[{"id": "call-facility", "name": "create_entity", "args": {"name": "Facility", "kind": "entity"}}])
+                return AIMessage(content="", tool_calls=[{"id": "call-well", "name": "create_entity", "args": {"name": "Well"}}])
+            return AIMessage(content="", tool_calls=[{"id": "call-facility", "name": "create_entity", "args": {"name": "Facility"}}])
 
     monkeypatch.setattr(graph, "configured_model", lambda: FakeModel())
     client = TestClient(app)
@@ -192,8 +192,35 @@ def test_clear_graph_tool_removes_all_graph_state(monkeypatch) -> None:
 
     assert state["nodes"] == []
     assert state["edges"] == []
-    assert state["rdf"] == "@prefix vg: <http://example.com/vibegraph#> .\n\n\n"
+    assert "owl:Ontology" in state["rdf"]
     assert interrupt_payloads[0]["reason"] == "clear_graph_confirmation"
+
+
+def test_set_namespace_tool_updates_owl_prefix(monkeypatch) -> None:
+    class FakeModel:
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            if messages[-1].type == "tool":
+                return AIMessage(content="Updated the namespace.")
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-namespace",
+                        "name": "set_namespace",
+                        "args": {"prefix": "prod", "namespace": "https://example.com/production#"},
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(graph, "configured_model", lambda: FakeModel())
+    response = post_agent_message(TestClient(app), "Use prefix prod and namespace https://example.com/production#", run_id="namespace-turn", thread_id="namespace-thread")
+    state = latest_state_snapshot(response.text)
+
+    assert state["namespace"] == {"prefix": "prod", "namespace": "https://example.com/production#"}
+    assert "@prefix prod: <https://example.com/production#> ." in state["rdf"]
 
 
 def test_delete_relationship_tool_removes_edge_only(monkeypatch) -> None:
