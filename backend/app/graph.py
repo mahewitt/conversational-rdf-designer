@@ -36,7 +36,7 @@ Tool contract:
 - Use create_entity for a simple request that creates one entity.
 - Use create_relationship only when both endpoint entities already exist in graph state or were created by an earlier tool call.
 - Use add_property for attributes on an existing entity.
-- Use update_entity for rename/refinement requests.
+- Use update_entity for rename, refinement, or description requests.
 - Use delete_entity only when the user clearly asks to remove an entity.
 - Use delete_relationship when the user asks to remove, unlink, or negate one relationship without deleting entities.
 - Use update_relationship when the user asks to change the predicate or endpoints of an existing relationship.
@@ -49,6 +49,7 @@ Tool contract:
 
 Extraction rules:
 - For apply_graph_operations, include every entity referenced by every relationship in the entities list.
+- Include a concise, domain-specific description for each entity when it can be inferred from the user request or source text.
 - Prefer singular entity names: Well, Hydrocarbon, Sensor, Data Product.
 - Create entities before relationships by using apply_graph_operations rather than many separate relationship calls.
 
@@ -71,8 +72,10 @@ def owl_turtle(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], namespa
     for node in nodes:
         identifier = node["id"].replace("-", "_")
         label = node.get("data", {}).get("label", node["id"])
+        description = node.get("data", {}).get("description") or f"A {label} in this semantic model."
         lines.append(f'{prefix}:{identifier} a owl:Class ;')
-        lines.append(f'    rdfs:label "{label}" .')
+        lines.append(f'    rdfs:label "{turtle_literal(label)}" ;')
+        lines.append(f'    rdfs:comment "{turtle_literal(description)}" .')
     lines.append("")
     for edge in edges:
         predicate = edge["label"].replace(" ", "_")
@@ -82,6 +85,10 @@ def owl_turtle(nodes: list[dict[str, Any]], edges: list[dict[str, Any]], namespa
         lines.append(f"    rdfs:domain {prefix}:{source} ;")
         lines.append(f"    rdfs:range {prefix}:{target} .")
     return "\n".join(lines) + "\n"
+
+
+def turtle_literal(value: Any) -> str:
+    return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
 
 
 def turtle(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> str:

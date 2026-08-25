@@ -11,6 +11,7 @@ from .graph_store import GraphStore
 
 class CreateEntityInput(BaseModel):
     name: str = Field(description="Singular business name for the entity, for example 'Facility' or 'Data Product'.")
+    description: str | None = Field(default=None, description="Brief definition of the entity. When omitted, the backend generates a generic description.")
 
 
 class CreateRelationshipInput(BaseModel):
@@ -28,6 +29,7 @@ class AddPropertyInput(BaseModel):
 class UpdateEntityInput(BaseModel):
     entity_id: str = Field(description="Existing entity ID to update.")
     name: str | None = Field(default=None, description="New display label for the entity.")
+    description: str | None = Field(default=None, description="New human-readable definition for the entity. When renaming without a description, a generic definition is regenerated.")
 
 
 class DeleteEntityInput(BaseModel):
@@ -66,6 +68,7 @@ class SetNamespaceInput(BaseModel):
 
 class ExtractedEntity(BaseModel):
     name: str = Field(description="Singular entity name extracted from text.")
+    description: str | None = Field(default=None, description="Brief domain definition extracted or inferred from the text.")
 
 
 class ExtractedRelationship(BaseModel):
@@ -91,13 +94,13 @@ class SaveModelInput(BaseModel):
 
 
 def create_entity_tool(store: GraphStore) -> StructuredTool:
-    def create_entity(name: str) -> dict[str, Any]:
-        return store.create_entity(name)
+    def create_entity(name: str, description: str | None = None) -> dict[str, Any]:
+        return store.create_entity(name, description)
 
     return StructuredTool.from_function(
         create_entity,
         name="create_entity",
-        description="Create one entity node. Use for simple single-entity requests. Prefer singular names. The backend derives the lowercase hyphenated ID.",
+        description="Create one entity node, with an optional concise domain definition. Use for simple single-entity requests. Prefer singular names. The backend derives the lowercase hyphenated ID and generates a generic definition when none is supplied.",
         args_schema=CreateEntityInput,
     )
 
@@ -127,13 +130,13 @@ def add_property_tool(store: GraphStore) -> StructuredTool:
 
 
 def update_entity_tool(store: GraphStore) -> StructuredTool:
-    def update_entity(entity_id: str, name: str | None = None) -> dict[str, Any]:
-        return store.update_entity(entity_id, name)
+    def update_entity(entity_id: str, name: str | None = None, description: str | None = None) -> dict[str, Any]:
+        return store.update_entity(entity_id, name, description)
 
     return StructuredTool.from_function(
         update_entity,
         name="update_entity",
-        description="Rename or update one existing entity. Use this for refinement requests such as 'Rename Well to Production Well'.",
+        description="Rename or update one existing entity, including its human-readable definition. Use this for refinement requests such as 'Rename Well to Production Well' or 'Describe Claim as an insurance claim submitted by a policyholder'.",
         args_schema=UpdateEntityInput,
     )
 
@@ -247,7 +250,7 @@ def apply_graph_operations_tool(store: GraphStore) -> StructuredTool:
             "Apply a complete graph update in dependency-safe order. Use this for document extraction, pasted text, "
             "or any request containing multiple facts. Include every entity referenced by every relationship in entities. "
             "The backend creates entities first, then relationships, then attributes, so relationship ordering cannot fail. "
-            "Prefer singular entity names such as 'Well' instead of 'Wells'."
+            "Include concise descriptions when the source explains what an entity means. Prefer singular entity names such as 'Well' instead of 'Wells'."
         ),
         args_schema=ApplyGraphOperationsInput,
     )

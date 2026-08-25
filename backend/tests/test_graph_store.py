@@ -1,5 +1,6 @@
 import pytest
 
+from app.graph import owl_turtle
 from app.graph_store import GraphStore
 
 
@@ -14,6 +15,19 @@ def test_graph_store_supports_entities_relationships_and_properties() -> None:
     assert relationship["label"] == "contains"
     assert store.nodes[0]["data"]["properties"] == {"name": "North"}
     assert len(store.edges) == 1
+
+
+def test_entities_have_editable_descriptions_in_owl_output() -> None:
+    store = GraphStore()
+    claim = store.create_entity("Claim")
+
+    assert claim["data"]["description"] == "A Claim in this semantic model."
+
+    store.update_entity(claim["id"], description='An insurance claim submitted by a policyholder for "covered" loss.')
+    rdf = owl_turtle(store.nodes, store.edges, store.namespace)
+
+    assert 'rdfs:label "Claim" ;' in rdf
+    assert 'rdfs:comment "An insurance claim submitted by a policyholder for \\"covered\\" loss." .' in rdf
 
 
 def test_delete_entity_removes_connected_relationships() -> None:

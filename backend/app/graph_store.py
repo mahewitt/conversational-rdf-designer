@@ -15,26 +15,38 @@ class GraphStore:
         self.edges = [dict(edge) for edge in (edges or [])]
         self.namespace = namespace or {"prefix": "vg", "namespace": "http://example.com/vibegraph#"}
 
-    def create_entity(self, name: str, position: dict[str, int] | None = None) -> dict[str, Any]:
+    def create_entity(self, name: str, description: str | None = None, position: dict[str, int] | None = None) -> dict[str, Any]:
         node_id = self._identifier(name)
         existing = self._node(node_id)
         if existing:
+            if description:
+                existing.setdefault("data", {})["description"] = description
             return existing
         node = {
             "id": node_id,
             "type": "default",
             "position": position or {"x": 160 + len(self.nodes) * 280, "y": 170},
-            "data": {"label": name},
+            "data": {"label": name, "description": description or self._default_description(name)},
         }
         self.nodes.append(node)
         return node
 
-    def update_entity(self, entity_id: str, name: str | None = None, properties: dict[str, Any] | None = None) -> dict[str, Any]:
+    def update_entity(
+        self,
+        entity_id: str,
+        name: str | None = None,
+        description: str | None = None,
+        properties: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         node = self._node(entity_id)
         if not node:
             raise ValueError(f"Entity '{entity_id}' does not exist")
         if name:
             node.setdefault("data", {})["label"] = name
+            if description is None:
+                node["data"]["description"] = self._default_description(name)
+        if description:
+            node.setdefault("data", {})["description"] = description
         if properties:
             node.setdefault("data", {}).setdefault("properties", {}).update(properties)
         return node
@@ -138,7 +150,7 @@ class GraphStore:
         updated_entities = []
 
         for entity in entities or []:
-            created_entities.append(self.create_entity(entity["name"]))
+            created_entities.append(self.create_entity(entity["name"], entity.get("description")))
 
         for relationship in relationships or []:
             source = self.create_entity(relationship["source"])
@@ -179,3 +191,7 @@ class GraphStore:
     @staticmethod
     def _identifier(name: str) -> str:
         return "-".join(name.lower().strip().split())
+
+    @staticmethod
+    def _default_description(name: str) -> str:
+        return f"A {name} in this semantic model."
