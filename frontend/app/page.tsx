@@ -1,8 +1,9 @@
 "use client";
 
-import { CopilotChat, UseAgentUpdate, useAgent, useInterrupt } from "@copilotkit/react-core/v2";
+import { CopilotChat, UseAgentUpdate, useAgent, useInterrupt, useRenderTool } from "@copilotkit/react-core/v2";
 import { Background, Controls, Edge, Node, NodeChange, ReactFlow, applyNodeChanges } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useRef } from "react";
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
@@ -18,6 +19,23 @@ function clearGraphInterrupt(value: unknown): ClearGraphInterrupt | undefined {
   return undefined;
 }
 
+function triggerDownload(content: string, filename: string) {
+  if (!content) return;
+  const blob = new Blob([content], { type: "text/turtle;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  let name = filename || "model.ttl";
+  if (!name.endsWith(".ttl")) name = `${name}.ttl`;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => {
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
 export default function Home() {
   const { agent } = useAgent({ agentId: "vibegraph", updates: [UseAgentUpdate.OnStateChanged, UseAgentUpdate.OnRunStatusChanged] });
   const state = agent.state as SharedGraphState | undefined;
@@ -25,23 +43,56 @@ export default function Home() {
   const nodes = state?.nodes ?? initialNodes;
   const edges = state?.edges ?? initialEdges;
 
+  const latestStateRef = useRef<SharedGraphState | undefined>(state);
+  latestStateRef.current = state;
+
+  const downloadedCallsRef = useRef<Set<string>>(new Set());
+
   function onNodesChange(changes: NodeChange[]) {
     const current = (agent.state as SharedGraphState | undefined) ?? { nodes: initialNodes, edges: initialEdges, rdf: "" };
     agent.setState({ ...current, nodes: applyNodeChanges(changes, current.nodes) });
   }
 
-  function handleExportRDF() {
-    if (!state?.rdf) return;
-    const blob = new Blob([state.rdf], { type: "text/turtle" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "model.ttl";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  function handleExportRDF(customFilename?: string) {
+    const content = latestStateRef.current?.rdf;
+    if (!content) return;
+    triggerDownload(content, customFilename || "model.ttl");
   }
+
+  useRenderTool({
+    name: "*",
+    agentId: "vibegraph",
+    render: (props) => {
+      if (props.name !== "save_model") return <></>;
+
+      if (props.status === "complete" && props.toolCallId && !downloadedCallsRef.current.has(props.toolCallId)) {
+        downloadedCallsRef.current.add(props.toolCallId);
+
+        let parsedResult: any = {};
+        if (typeof props.result === "string") {
+          try {
+            parsedResult = JSON.parse(props.result);
+          } catch {
+            parsedResult = { message: props.result };
+          }
+        } else if (props.result && typeof props.result === "object") {
+          parsedResult = props.result;
+        }
+
+        const params = (props as any).parameters || (props as any).args || {};
+        const filename = parsedResult.filename || params.name || "model.ttl";
+
+        setTimeout(() => {
+          const content = latestStateRef.current?.rdf;
+          if (content) {
+            triggerDownload(content, filename);
+          }
+        }, 100);
+      }
+
+      return <></>;
+    },
+  });
 
   useInterrupt<ClearGraphInterrupt>({
     agentId: "vibegraph",
@@ -59,7 +110,7 @@ export default function Home() {
       <div className="sidebar-footer"><div className="status-dot" /> Local prototype<br /><small>Hour 1 workspace</small></div>
     </aside>
     <section className="workspace">
-      <header><div><div className="eyebrow">SEMANTIC DESIGNER / UNTITLED MODEL</div><h1>Shape knowledge together.</h1></div><button className="export" onClick={handleExportRDF} disabled={!state?.rdf}>Export RDF <span>↗</span></button></header>
+      <header><div><div className="eyebrow">SEMANTIC DESIGNER / UNTITLED MODEL</div><h1>Shape knowledge together.</h1></div><button className="export" onClick={() => handleExportRDF()} disabled={!state?.rdf}>Export RDF <span>↗</span></button></header>
       <div className="content"><section className="chat-panel"><div className="panel-heading"><span>Conversation</span><b>{running ? "STREAMING" : "LIVE"}</b></div><div className="copilot-chat"><CopilotChat agentId="vibegraph" labels={{ modalHeaderTitle: "VibeGraph Agent", welcomeMessageText: "Describe a domain and I'll sketch its semantic model." }} /></div></section>
         <section className="canvas-panel"><div className="canvas-toolbar"><span>MODEL CANVAS <b>{nodes.length} entities</b></span><span className="toolbar-actions">＋　−　⛶</span></div><div className="flow-wrap"><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} fitView><Background color="#d7e5e6" gap={22} size={1} /><Controls showInteractive={false} /></ReactFlow><div className="canvas-caption"><span className="legend teal" /> Class <span className="legend line" /> Object property</div></div></section>
         <aside className="rdf-panel"><div className="panel-heading"><span>RDF preview</span><span className="lock">LIVE STATE</span></div>{state?.rdf ? <pre className="rdf-output">{state.rdf}</pre> : <div className="rdf-placeholder"><div className="code-icon">{`</>`}</div><h2>Semantic output<br />will appear here</h2><p>As the graph evolves, VibeGraph will generate machine-readable Turtle.</p><div className="code-lines"><i /><i /><i /><i /></div></div>}</aside>

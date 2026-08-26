@@ -90,7 +90,7 @@ class ApplyGraphOperationsInput(BaseModel):
 
 
 class SaveModelInput(BaseModel):
-    name: str | None = Field(default=None, description="Optional name for the saved model. If not provided, uses a timestamp.")
+    name: str | None = Field(default=None, description="Optional name for the saved model (e.g. 'SolarPowerOntology'). If not provided, defaults to 'semantic_model'.")
 
 
 def create_entity_tool(store: GraphStore) -> StructuredTool:
@@ -268,21 +268,24 @@ def list_graph_tool(store: GraphStore) -> StructuredTool:
 
 
 def save_model_tool(store: GraphStore) -> StructuredTool:
-    def save_model(name: str | None = None) -> dict[str, str]:
-        import datetime
-
-        model_name = name or f"model-{datetime.datetime.now().isoformat(timespec='minutes')}"
+    def save_model(name: str | None = None) -> dict[str, Any]:
+        model_name = name or "semantic_model"
+        clean_name = model_name.strip().replace(" ", "_")
+        filename = clean_name if clean_name.endswith(".ttl") else f"{clean_name}.ttl"
         entity_count = len(store.nodes)
         relationship_count = len(store.edges)
         return {
             "saved": model_name,
-            "message": f"Model '{model_name}' saved with {entity_count} entities and {relationship_count} relationships. Export the RDF to download the Turtle file.",
+            "filename": filename,
+            "entity_count": entity_count,
+            "relationship_count": relationship_count,
+            "message": f"Model '{model_name}' saved with {entity_count} entities and {relationship_count} relationships. A save/download prompt has been presented.",
         }
 
     return StructuredTool.from_function(
         save_model,
         name="save_model",
-        description="Save the current model with an optional name. The model is persisted and can be exported as OWL/Turtle RDF. Use when the user asks to save the model or semantic graph.",
+        description="Save the current model with an optional name. The model is persisted and can be exported as OWL/Turtle RDF. Use when the user asks to save the model, save as RDF, export RDF, or download the Turtle file.",
         args_schema=SaveModelInput,
     )
 
