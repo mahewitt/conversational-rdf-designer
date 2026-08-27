@@ -155,6 +155,76 @@ def test_document_extraction_uses_bulk_graph_operations(monkeypatch) -> None:
     assert {edge["label"] for edge in state["edges"]} == {"contains", "produces", "measures", "is stored in"}
 
 
+def test_multimodal_er_diagram_extraction_uses_apply_graph_operations(monkeypatch) -> None:
+    class FakeModel:
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            if messages[-1].type == "tool":
+                return AIMessage(content="Extracted ER diagram into graph state.")
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call-er-extract",
+                        "name": "apply_graph_operations",
+                        "args": {
+                            "entities": [
+                                {"name": "Customer", "description": "A person or organization making purchases."},
+                                {"name": "Order", "description": "A customer request for products."},
+                                {"name": "LineItem", "description": "An individual item entry in an order."},
+                            ],
+                            "relationships": [
+                                {"source": "Customer", "predicate": "places", "target": "Order"},
+                                {"source": "Order", "predicate": "contains", "target": "LineItem"},
+                            ],
+                            "attributes": [
+                                {"entity": "Customer", "property": "email", "value": "string"},
+                                {"entity": "Order", "property": "order_date", "value": "date"},
+                            ],
+                        },
+                    }
+                ],
+            )
+
+    monkeypatch.setattr(graph, "configured_model", lambda: FakeModel())
+    client = TestClient(app)
+    response = client.post(
+        "/api/agent",
+        json={
+            "thread_id": "er-thread",
+            "run_id": "er-run",
+            "state": {},
+            "messages": [
+                {
+                    "id": "er-msg",
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Interpret this ER diagram and build an ontology:"},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "url",
+                                "value": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+                                "mime_type": "image/png",
+                            },
+                        },
+                    ],
+                }
+            ],
+            "tools": [],
+            "context": [],
+            "forwarded_props": {},
+        },
+        headers={"Accept": "text/event-stream"},
+    )
+    state = latest_state_snapshot(response.text)
+
+    assert {node["id"] for node in state["nodes"]} == {"customer", "order", "lineitem"}
+    assert {edge["label"] for edge in state["edges"]} == {"places", "contains"}
+
+
 def test_clear_graph_tool_removes_all_graph_state(monkeypatch) -> None:
     from app import semantic_tools
     interrupt_payloads = []
