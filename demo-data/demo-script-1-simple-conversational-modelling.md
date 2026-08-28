@@ -6,20 +6,21 @@ Show that plain language can create and refine a semantic graph.
 
 ## Script
 
+
 User:
 
 ```text
-Create Facility.
+We are working within the subsurface domain
 ```
 
 Expected result:
 
-- Facility entity appears on the graph.
+- Info message to give details
 
 User:
 
 ```text
-Create Well.
+Create Well
 ```
 
 Expected result:
@@ -29,23 +30,22 @@ Expected result:
 User:
 
 ```text
-Facility contains Well.
+Create Wellbore
 ```
 
 Expected result:
 
-- A `contains` relationship appears from Facility to Well.
+- Wellbore entity appears on the graph.
 
 User:
 
 ```text
-Add Production Measurement.
+Well contains a Wellbore
 ```
 
 Expected result:
 
-- Production Measurement appears on the graph.
-- The graph state and RDF preview update.
+- A `contains` relationship appears from Well to Wellbore.
 
 User:
 

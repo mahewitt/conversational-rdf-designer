@@ -1,4 +1,4 @@
-# Demo Script 3: Data Product Semantic Designer
+# Demo Script 2: Document / Web to Ontology
 
 ## Goal
 
@@ -6,7 +6,7 @@ Show VibeGraph as a semantic design assistant for a data architecture audience.
 
 ## Script
 
-- create a sample retail ontology
+- Clear any old designs
 
 User:
 
@@ -27,6 +27,7 @@ create an ontology from: https://www.statkraft.com/energy-technologies/solar-pow
 Expected result:
 
 - Ontology created
+- Find Statcraft entity and show the it contains and owns link
 
 User:
 
@@ -58,6 +59,18 @@ Expected result:
 
 - Entities and relationships added
 
+User:
 
-- describe the ontology so far
-- save as RDF
+```text
+describe the ontology so far
+```
+
+User:
+
+```text
+Export RDF.
+```
+
+Expected result:
+
+- Turtle RDF is available from the RDF preview/export flow.
