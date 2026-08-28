@@ -3,10 +3,18 @@
 import { CopilotChat, UseAgentUpdate, useAgent, useInterrupt, useRenderTool } from "@copilotkit/react-core/v2";
 import { Background, Controls, Edge, Node, NodeChange, ReactFlow, applyNodeChanges } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
+const MIN_SIDE_PANEL_WIDTH = 260;
+const MIN_CANVAS_WIDTH = 320;
+const DEFAULT_CHAT_WIDTH = 380;
+const DEFAULT_RDF_WIDTH = 260;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
 
 type SharedGraphState = {
   nodes: Node[];
@@ -68,6 +76,44 @@ export default function Home() {
   latestStateRef.current = state;
 
   const downloadedCallsRef = useRef<Set<string>>(new Set());
+
+  const [chatWidth, setChatWidth] = useState(DEFAULT_CHAT_WIDTH);
+  const [rdfWidth, setRdfWidth] = useState(DEFAULT_RDF_WIDTH);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const resizingPaneRef = useRef<"chat" | "rdf" | null>(null);
+
+  function startResizing(pane: "chat" | "rdf") {
+    return (event: React.MouseEvent) => {
+      event.preventDefault();
+      resizingPaneRef.current = pane;
+      document.body.style.cursor = "col-resize";
+    };
+  }
+
+  useEffect(() => {
+    function handleMouseMove(event: MouseEvent) {
+      const pane = resizingPaneRef.current;
+      const container = contentRef.current;
+      if (!pane || !container) return;
+      const rect = container.getBoundingClientRect();
+      const maxSideWidth = rect.width - MIN_CANVAS_WIDTH - MIN_SIDE_PANEL_WIDTH;
+      if (pane === "chat") {
+        setChatWidth(clamp(event.clientX - rect.left, MIN_SIDE_PANEL_WIDTH, maxSideWidth));
+      } else {
+        setRdfWidth(clamp(rect.right - event.clientX, MIN_SIDE_PANEL_WIDTH, maxSideWidth));
+      }
+    }
+    function handleMouseUp() {
+      resizingPaneRef.current = null;
+      document.body.style.cursor = "";
+    }
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   function onNodesChange(changes: NodeChange[]) {
     const current = (agent.state as SharedGraphState | undefined) ?? {
@@ -203,7 +249,11 @@ export default function Home() {
             </button>
           </div>
         </header>
-        <div className="content">
+        <div
+          className="content"
+          ref={contentRef}
+          style={{ "--chat-width": `${chatWidth}px`, "--rdf-width": `${rdfWidth}px` } as React.CSSProperties}
+        >
           <section className="chat-panel">
             <div className="panel-heading">
               <span>Conversation</span>
@@ -225,6 +275,10 @@ export default function Home() {
               />
             </div>
           </section>
+          <div
+            className="pane-resizer resizer-chat-canvas"
+            onMouseDown={startResizing("chat")}
+          />
           <section className="canvas-panel">
             <div className="canvas-toolbar">
               <span>
@@ -251,6 +305,10 @@ export default function Home() {
               </div>
             </div>
           </section>
+          <div
+            className="pane-resizer resizer-canvas-rdf"
+            onMouseDown={startResizing("rdf")}
+          />
           <aside className="rdf-panel">
             <div className="panel-heading">
               <span>RDF preview</span>
