@@ -13,5 +13,15 @@
             "approve": true,
             "matchCommandLine": true
         }
-    }
+    },
+    "[typescriptreact]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
+    },
+    "[typescript]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true
+    },
+    "prettier.printWidth": 120,
+    "prettier.singleAttributePerLine": true
 }

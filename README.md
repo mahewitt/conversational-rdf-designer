@@ -8,6 +8,36 @@ VibeGraph is a conversational semantic modelling prototype. This repository cont
 - `uv` ([installation guide](https://docs.astral.sh/uv/getting-started/installation/))
 - Node.js 18.18+
 
+## Recommended VS Code Extensions
+
+### Frontend (TypeScript / Next.js / React)
+- **Prettier - Code Formatter** (`esbenp.prettier-vscode`): Automatically formats TypeScript/React code on save or on command. Configured with a `printWidth` of 120 and `singleAttributePerLine` so long JSX properties break cleanly across multiple lines.
+- **ESLint** (`dbaeumer.vscode-eslint`): Lints JavaScript/TypeScript files to highlight syntax errors, code quality issues, and Next.js/React anti-patterns.
+
+### Backend (Python / FastAPI / LangGraph)
+- **Python** (`ms-python.python`): Provides core Python language support, debugging capabilities, virtual environment auto-detection, and test execution.
+- **Pylance** (`ms-python.vscode-pylance`): Rich language server for Python supplying fast type checking, auto-completion, navigation, and docstrings.
+- **Ruff** (`charliermarsh.ruff`): Extremely fast Python linter and formatter to keep backend Python code clean and consistent.
+
+### Workspace Formatting Settings
+
+The workspace includes a `.vscode/settings.json` file configured to automatically format TS/React files using Prettier on save:
+
+```json
+{
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "prettier.printWidth": 120,
+  "prettier.singleAttributePerLine": true
+}
+```
+
 ## Run the backend
 
 ```powershell
