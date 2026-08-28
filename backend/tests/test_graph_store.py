@@ -42,6 +42,26 @@ def test_delete_entity_removes_connected_relationships() -> None:
     assert store.edges == []
 
 
+def test_create_relationship_resolves_display_names_to_entity_ids() -> None:
+    store = GraphStore()
+    store.create_entity("Well")
+    store.create_entity("Wellbore")
+
+    edge = store.create_relationship("Well", "contains", "Wellbore")
+
+    assert edge["source"] == "well"
+    assert edge["target"] == "wellbore"
+    assert {node["id"] for node in store.nodes} == {"well", "wellbore"}
+
+
+def test_create_relationship_raises_helpful_error_for_unknown_entity() -> None:
+    store = GraphStore()
+    store.create_entity("Well")
+
+    with pytest.raises(ValueError, match="Existing entities:.*'Well' \\(id: well\\)"):
+        store.create_relationship("Well", "contains", "Nonexistent")
+
+
 def test_delete_relationship_removes_edge_without_deleting_entities() -> None:
     store = GraphStore()
     facility = store.create_entity("Facility")

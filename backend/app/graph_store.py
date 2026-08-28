@@ -38,9 +38,9 @@ class GraphStore:
         description: str | None = None,
         properties: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        node = self._node(entity_id)
+        node = self._resolve_node(entity_id)
         if not node:
-            raise ValueError(f"Entity '{entity_id}' does not exist")
+            raise ValueError(self._unknown_entity_message(entity_id))
         if name:
             node.setdefault("data", {})["label"] = name
             if description is None:
@@ -52,10 +52,12 @@ class GraphStore:
         return node
 
     def delete_entity(self, entity_id: str) -> None:
-        if not self._node(entity_id):
-            raise ValueError(f"Entity '{entity_id}' does not exist")
-        self.nodes = [node for node in self.nodes if node["id"] != entity_id]
-        self.edges = [edge for edge in self.edges if edge["source"] != entity_id and edge["target"] != entity_id]
+        node = self._resolve_node(entity_id)
+        if not node:
+            raise ValueError(self._unknown_entity_message(entity_id))
+        resolved_id = node["id"]
+        self.nodes = [item for item in self.nodes if item["id"] != resolved_id]
+        self.edges = [edge for edge in self.edges if edge["source"] != resolved_id and edge["target"] != resolved_id]
 
     def clear_graph(self) -> dict[str, int]:
         deleted_entities = len(self.nodes)
@@ -77,18 +79,25 @@ class GraphStore:
         return self.namespace
 
     def create_relationship(self, source: str, predicate: str, target: str) -> dict[str, Any]:
-        if not self._node(source) or not self._node(target):
-            raise ValueError("Both relationship endpoints must exist")
-        existing = next((edge for edge in self.edges if edge["source"] == source and edge["target"] == target and edge["label"] == predicate), None)
+        source_node = self._resolve_node(source)
+        target_node = self._resolve_node(target)
+        if not source_node or not target_node:
+            raise ValueError(f"Both relationship endpoints must exist. {self._known_entities_message()}")
+        source_id, target_id = source_node["id"], target_node["id"]
+        existing = next((edge for edge in self.edges if edge["source"] == source_id and edge["target"] == target_id and edge["label"] == predicate), None)
         if existing:
             return existing
-        edge = {"id": f"{source}-{predicate}-{target}-{uuid4().hex[:6]}", "source": source, "target": target, "label": predicate}
+        edge = {"id": f"{source_id}-{predicate}-{target_id}-{uuid4().hex[:6]}", "source": source_id, "target": target_id, "label": predicate}
         self.edges.append(edge)
         return edge
 
     def delete_relationship(self, source: str, predicate: str, target: str) -> dict[str, int]:
+        source_node = self._resolve_node(source)
+        target_node = self._resolve_node(target)
+        source_id = source_node["id"] if source_node else source
+        target_id = target_node["id"] if target_node else target
         before = len(self.edges)
-        self.edges = [edge for edge in self.edges if not (edge["source"] == source and edge["target"] == target and edge["label"] == predicate)]
+        self.edges = [edge for edge in self.edges if not (edge["source"] == source_id and edge["target"] == target_id and edge["label"] == predicate)]
         return {"deleted_relationships": before - len(self.edges)}
 
     def update_relationship(
@@ -100,42 +109,49 @@ class GraphStore:
         new_source: str | None = None,
         new_target: str | None = None,
     ) -> dict[str, Any]:
-        edge = next((item for item in self.edges if item["source"] == source and item["target"] == target and item["label"] == predicate), None)
+        source_node = self._resolve_node(source)
+        target_node = self._resolve_node(target)
+        source_id = source_node["id"] if source_node else source
+        target_id = target_node["id"] if target_node else target
+        edge = next((item for item in self.edges if item["source"] == source_id and item["target"] == target_id and item["label"] == predicate), None)
         if not edge:
             raise ValueError(f"Relationship '{source} {predicate} {target}' does not exist")
-        if new_source and not self._node(new_source):
-            raise ValueError(f"Entity '{new_source}' does not exist")
-        if new_target and not self._node(new_target):
-            raise ValueError(f"Entity '{new_target}' does not exist")
-        edge["source"] = new_source or edge["source"]
-        edge["target"] = new_target or edge["target"]
+        resolved_new_source = self._resolve_node(new_source) if new_source else None
+        resolved_new_target = self._resolve_node(new_target) if new_target else None
+        if new_source and not resolved_new_source:
+            raise ValueError(f"Entity '{new_source}' does not exist. {self._known_entities_message()}")
+        if new_target and not resolved_new_target:
+            raise ValueError(f"Entity '{new_target}' does not exist. {self._known_entities_message()}")
+        edge["source"] = resolved_new_source["id"] if resolved_new_source else edge["source"]
+        edge["target"] = resolved_new_target["id"] if resolved_new_target else edge["target"]
         edge["label"] = new_predicate or edge["label"]
         return edge
 
     def merge_entities(self, source_entity_id: str, target_entity_id: str, merged_name: str | None = None) -> dict[str, Any]:
-        source = self._node(source_entity_id)
-        target = self._node(target_entity_id)
+        source = self._resolve_node(source_entity_id)
+        target = self._resolve_node(target_entity_id)
         if not source or not target:
-            raise ValueError("Both merge entities must exist")
-        if source_entity_id == target_entity_id:
+            raise ValueError(f"Both merge entities must exist. {self._known_entities_message()}")
+        source_id, target_id = source["id"], target["id"]
+        if source_id == target_id:
             return target
         source_properties = source.get("data", {}).get("properties", {})
         target.setdefault("data", {}).setdefault("properties", {}).update(source_properties)
         if merged_name:
             target["data"]["label"] = merged_name
         for edge in self.edges:
-            if edge["source"] == source_entity_id:
-                edge["source"] = target_entity_id
-            if edge["target"] == source_entity_id:
-                edge["target"] = target_entity_id
-        self.nodes = [node for node in self.nodes if node["id"] != source_entity_id]
+            if edge["source"] == source_id:
+                edge["source"] = target_id
+            if edge["target"] == source_id:
+                edge["target"] = target_id
+        self.nodes = [node for node in self.nodes if node["id"] != source_id]
         self.edges = self._deduplicate_edges([edge for edge in self.edges if edge["source"] != edge["target"]])
         return target
 
     def add_property(self, entity_id: str, property_name: str, value: Any = None) -> dict[str, Any]:
-        node = self._node(entity_id)
+        node = self._resolve_node(entity_id)
         if not node:
-            raise ValueError(f"Entity '{entity_id}' does not exist")
+            raise ValueError(self._unknown_entity_message(entity_id))
         node.setdefault("data", {}).setdefault("properties", {})[property_name] = value
         return node
 
@@ -175,6 +191,35 @@ class GraphStore:
 
     def _node(self, entity_id: str) -> dict[str, Any] | None:
         return next((node for node in self.nodes if node["id"] == entity_id), None)
+
+    def _resolve_node(self, ref: str) -> dict[str, Any] | None:
+        # Tool calls may supply the exact id, a differently-cased/hyphenated variant, or the display label;
+        # resolving all three keeps edges pointed at a real node id even when the caller guesses the format.
+        if not ref:
+            return None
+        exact = self._node(ref)
+        if exact:
+            return exact
+        normalized_id = self._identifier(ref)
+        cleaned_ref = ref.strip().lower()
+        return next(
+            (
+                node
+                for node in self.nodes
+                if node["id"] == normalized_id or node.get("data", {}).get("label", "").strip().lower() == cleaned_ref
+            ),
+            None,
+        )
+
+    def _known_entities_message(self) -> str:
+        if not self.nodes:
+            return "No entities exist yet."
+        separator = ", "
+        labels = separator.join(f"'{node.get('data', {}).get('label', node['id'])}' (id: {node['id']})" for node in self.nodes)
+        return f"Existing entities: {labels}."
+
+    def _unknown_entity_message(self, entity_id: str) -> str:
+        return f"Entity '{entity_id}' does not exist. {self._known_entities_message()}"
 
     @staticmethod
     def _deduplicate_edges(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
