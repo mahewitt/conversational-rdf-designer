@@ -27,11 +27,16 @@ Cleanup
 cyber cash can also have registered multiple credit cards
 ```
 
+```text
+xxx should be conected to xxx not xxx
+```
+
 Expected result:
 
 - Fixes implemented
 
 User:
+Power with the ontology is can be used for many purposes - from describing the business to a real artifact that drives and guides AI. Now we have an ontology, I can export it as a spec-kit specification. That means an engineering team can hand this file straight to their AI coding agent, run /plan and /tasks, and go from semantic model to a working data product — schema, API, pipeline or agent — without re-typing a single requirement. The ontology is the spec."
 
 ```text
 Save as speckit

@@ -15,6 +15,7 @@ from langgraph.graph.message import add_messages
 
 from .graph_store import GraphStore
 from .semantic_tools import modelling_tools
+from .spec_export import generate_speckit_spec
 
 load_dotenv()
 
@@ -24,6 +25,7 @@ class GraphState(TypedDict, total=False):
     nodes: list[dict[str, Any]]
     edges: list[dict[str, Any]]
     rdf: str
+    speckit: str
     namespace: dict[str, str]
 
 
@@ -45,6 +47,7 @@ Tool contract:
 - Use clear_graph when the user asks to delete all entities, clear the graph, reset the model, remove everything, or start over. Do not ask for confirmation yourself; the clear_graph tool requests human approval.
 - Use set_namespace when the user asks to change the OWL/Turtle prefix, namespace, base IRI, or entity IRI namespace.
 - Use save_model when the user asks to save the model, persist the graph, save as RDF, export RDF, or download the Turtle file.
+- Use save_speckit when the user asks to save as speckit, export a spec-kit spec, generate a data product specification, or produce a spec.md for building the ontology into a data product.
 - Use apply_graph_operations for pasted documents, extraction requests, ER/UML/schema diagrams, image inputs, or any request with multiple facts, entities, relationships, or attributes.
 
 Diagram and ER extraction rules:
@@ -173,13 +176,24 @@ def run_tools(state: GraphState) -> GraphState:
             result = {"error": str(exc)}
         tool_messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
 
-    return {**store.to_state(), "rdf": owl_turtle(store.nodes, store.edges, store.namespace), "messages": tool_messages}
+    return {
+        **store.to_state(),
+        "rdf": owl_turtle(store.nodes, store.edges, store.namespace),
+        "speckit": generate_speckit_spec(store.nodes, store.edges, store.namespace),
+        "messages": tool_messages,
+    }
 
 
 async def emit_state(state: GraphState, config: RunnableConfig) -> GraphState:
     nodes, edges = graph_from_state(state)
     namespace = namespace_from_state(state)
-    current = {"nodes": nodes, "edges": edges, "namespace": namespace, "rdf": owl_turtle(nodes, edges, namespace)}
+    current = {
+        "nodes": nodes,
+        "edges": edges,
+        "namespace": namespace,
+        "rdf": owl_turtle(nodes, edges, namespace),
+        "speckit": generate_speckit_spec(nodes, edges, namespace),
+    }
     await adispatch_custom_event(CustomEventNames.ManuallyEmitState, current, config=config)
     return current
 

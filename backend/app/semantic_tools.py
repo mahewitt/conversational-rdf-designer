@@ -93,6 +93,10 @@ class SaveModelInput(BaseModel):
     name: str | None = Field(default=None, description="Optional name for the saved model (e.g. 'SolarPowerOntology'). If not provided, defaults to 'semantic_model'.")
 
 
+class SaveSpeckitInput(BaseModel):
+    name: str | None = Field(default=None, description="Optional name for the saved spec-kit file (e.g. 'SolarPowerDataProduct'). If not provided, defaults to 'spec'.")
+
+
 def create_entity_tool(store: GraphStore) -> StructuredTool:
     def create_entity(name: str, description: str | None = None) -> dict[str, Any]:
         return store.create_entity(name, description)
@@ -290,6 +294,33 @@ def save_model_tool(store: GraphStore) -> StructuredTool:
     )
 
 
+def save_speckit_tool(store: GraphStore) -> StructuredTool:
+    def save_speckit(name: str | None = None) -> dict[str, Any]:
+        spec_name = name or "spec"
+        clean_name = spec_name.strip().replace(" ", "_")
+        filename = clean_name if clean_name.endswith(".md") else f"{clean_name}.md"
+        entity_count = len(store.nodes)
+        relationship_count = len(store.edges)
+        return {
+            "saved": spec_name,
+            "filename": filename,
+            "entity_count": entity_count,
+            "relationship_count": relationship_count,
+            "message": f"Spec-kit specification '{spec_name}' generated from {entity_count} entities and {relationship_count} relationships. A save/download prompt has been presented.",
+        }
+
+    return StructuredTool.from_function(
+        save_speckit,
+        name="save_speckit",
+        description=(
+            "Generate a spec-kit-compatible feature specification (spec.md) from the current ontology so it can seed "
+            "a spec-kit /plan and /tasks workflow to build the data product. Use when the user asks to save as speckit, "
+            "export a spec-kit spec, or generate a data product specification."
+        ),
+        args_schema=SaveSpeckitInput,
+    )
+
+
 def modelling_tools(store: GraphStore) -> list[StructuredTool]:
     return [
         create_entity_tool(store),
@@ -304,5 +335,6 @@ def modelling_tools(store: GraphStore) -> list[StructuredTool]:
         set_namespace_tool(store),
         apply_graph_operations_tool(store),
         save_model_tool(store),
+        save_speckit_tool(store),
         list_graph_tool(store),
     ]

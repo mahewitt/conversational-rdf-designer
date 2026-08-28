@@ -225,6 +225,38 @@ def test_multimodal_er_diagram_extraction_uses_apply_graph_operations(monkeypatc
     assert {edge["label"] for edge in state["edges"]} == {"places", "contains"}
 
 
+def test_save_speckit_tool_exports_data_product_spec(monkeypatch) -> None:
+    class FakeModel:
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            if messages[-1].type == "tool":
+                return AIMessage(content="Generated the spec-kit specification.")
+            return AIMessage(content="", tool_calls=[{"id": "call-speckit", "name": "save_speckit", "args": {"name": "SolarPowerDataProduct"}}])
+
+    monkeypatch.setattr(graph, "configured_model", lambda: FakeModel())
+    response = post_agent_message(
+        TestClient(app),
+        "Save as speckit",
+        state={
+            "nodes": [
+                {"id": "facility", "type": "default", "position": {"x": 0, "y": 0}, "data": {"label": "Facility", "kind": "entity"}},
+                {"id": "well", "type": "default", "position": {"x": 100, "y": 0}, "data": {"label": "Well", "kind": "entity"}},
+            ],
+            "edges": [{"id": "facility-contains-well", "source": "facility", "target": "well", "label": "contains"}],
+            "rdf": "existing",
+        },
+        run_id="speckit-turn",
+        thread_id="speckit-thread",
+    )
+    state = latest_state_snapshot(response.text)
+
+    assert "Feature Specification" in state["speckit"]
+    assert "FR-001" in state["speckit"]
+    assert "Facility" in state["speckit"]
+
+
 def test_clear_graph_tool_removes_all_graph_state(monkeypatch) -> None:
     from app import semantic_tools
     interrupt_payloads = []

@@ -12,6 +12,7 @@ type SharedGraphState = {
   nodes: Node[];
   edges: Edge[];
   rdf: string;
+  speckit?: string;
   namespace?: { prefix: string; namespace: string };
 };
 type ClearGraphInterrupt = {
@@ -31,14 +32,19 @@ function clearGraphInterrupt(value: unknown): ClearGraphInterrupt | undefined {
   return undefined;
 }
 
-function triggerDownload(content: string, filename: string) {
+function triggerDownload(
+  content: string,
+  filename: string,
+  mimeType = "text/turtle;charset=utf-8",
+  defaultExtension = ".ttl",
+) {
   if (!content) return;
-  const blob = new Blob([content], { type: "text/turtle;charset=utf-8" });
+  const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  let name = filename || "model.ttl";
-  if (!name.endsWith(".ttl")) name = `${name}.ttl`;
+  let name = filename || `model${defaultExtension}`;
+  if (!name.endsWith(defaultExtension)) name = `${name}${defaultExtension}`;
   link.download = name;
   document.body.appendChild(link);
   link.click();
@@ -75,14 +81,20 @@ export default function Home() {
   function handleExportRDF(customFilename?: string) {
     const content = latestStateRef.current?.rdf;
     if (!content) return;
-    triggerDownload(content, customFilename || "model.ttl");
+    triggerDownload(content, customFilename || "model.ttl", "text/turtle;charset=utf-8", ".ttl");
+  }
+
+  function handleExportSpecKit(customFilename?: string) {
+    const content = latestStateRef.current?.speckit;
+    if (!content) return;
+    triggerDownload(content, customFilename || "spec.md", "text/markdown;charset=utf-8", ".md");
   }
 
   useRenderTool({
     name: "*",
     agentId: "vibegraph",
     render: (props) => {
-      if (props.name !== "save_model") return <></>;
+      if (props.name !== "save_model" && props.name !== "save_speckit") return <></>;
 
       if (props.status === "complete" && props.toolCallId && !downloadedCallsRef.current.has(props.toolCallId)) {
         downloadedCallsRef.current.add(props.toolCallId);
@@ -99,12 +111,16 @@ export default function Home() {
         }
 
         const params = (props as any).parameters || (props as any).args || {};
-        const filename = parsedResult.filename || params.name || "model.ttl";
+        const isSpeckit = props.name === "save_speckit";
+        const filename = parsedResult.filename || params.name || (isSpeckit ? "spec.md" : "model.ttl");
 
         setTimeout(() => {
-          const content = latestStateRef.current?.rdf;
-          if (content) {
-            triggerDownload(content, filename);
+          if (isSpeckit) {
+            const content = latestStateRef.current?.speckit;
+            if (content) triggerDownload(content, filename, "text/markdown;charset=utf-8", ".md");
+          } else {
+            const content = latestStateRef.current?.rdf;
+            if (content) triggerDownload(content, filename, "text/turtle;charset=utf-8", ".ttl");
           }
         }, 100);
       }
@@ -170,13 +186,22 @@ export default function Home() {
             <div className="eyebrow">SEMANTIC DESIGNER / UNTITLED MODEL</div>
             <h1>Shape knowledge together.</h1>
           </div>
-          <button
-            className="export"
-            onClick={() => handleExportRDF()}
-            disabled={!state?.rdf}
-          >
-            Export RDF <span>↗</span>
-          </button>
+          <div className="header-actions">
+            <button
+              className="export"
+              onClick={() => handleExportRDF()}
+              disabled={!state?.rdf}
+            >
+              Export RDF <span>↗</span>
+            </button>
+            <button
+              className="export"
+              onClick={() => handleExportSpecKit()}
+              disabled={!state?.speckit}
+            >
+              Save Spec-Kit <span>↗</span>
+            </button>
+          </div>
         </header>
         <div className="content">
           <section className="chat-panel">
