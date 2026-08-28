@@ -194,4 +194,5 @@ class GraphStore:
 
     @staticmethod
     def _default_description(name: str) -> str:
+        # Last-resort placeholder; callers should normally infer and pass a domain-specific description.
         return f"A {name} in this semantic model."

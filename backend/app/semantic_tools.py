@@ -11,7 +11,16 @@ from .graph_store import GraphStore
 
 class CreateEntityInput(BaseModel):
     name: str = Field(description="Singular business name for the entity, for example 'Facility' or 'Data Product'.")
-    description: str | None = Field(default=None, description="Brief definition of the entity. When omitted, the backend generates a generic description.")
+    description: str | None = Field(
+        default=None,
+        description=(
+            "One-sentence, domain-specific definition of what this entity represents in the current model. "
+            "State the purpose or role directly (e.g. 'Provides goods or services to other entities in the supply "
+            "chain.'); do not start with 'An entity that ...' or 'A {name} that ...'. Always write a specific "
+            "definition grounded in the conversation's domain; do not omit this, since the backend's fallback is "
+            "generic and low quality."
+        ),
+    )
 
 
 class CreateRelationshipInput(BaseModel):
@@ -29,7 +38,13 @@ class AddPropertyInput(BaseModel):
 class UpdateEntityInput(BaseModel):
     entity_id: str = Field(description="Existing entity ID to update.")
     name: str | None = Field(default=None, description="New display label for the entity.")
-    description: str | None = Field(default=None, description="New human-readable definition for the entity. When renaming without a description, a generic definition is regenerated.")
+    description: str | None = Field(
+        default=None,
+        description=(
+            "One-sentence, domain-specific definition of what this entity represents. State the purpose or role "
+            "directly; do not start with 'An entity that ...' or similar filler."
+        ),
+    )
 
 
 class DeleteEntityInput(BaseModel):
@@ -68,7 +83,14 @@ class SetNamespaceInput(BaseModel):
 
 class ExtractedEntity(BaseModel):
     name: str = Field(description="Singular entity name extracted from text.")
-    description: str | None = Field(default=None, description="Brief domain definition extracted or inferred from the text.")
+    description: str | None = Field(
+        default=None,
+        description=(
+            "One-sentence, domain-specific definition of this entity, grounded in the source text/diagram and its "
+            "domain. State the purpose or role directly; do not start with 'An entity that ...' or similar filler. "
+            "Always provide this for every extracted entity rather than leaving it blank."
+        ),
+    )
 
 
 class ExtractedRelationship(BaseModel):

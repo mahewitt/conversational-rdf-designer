@@ -64,6 +64,12 @@ Extraction rules:
 - Prefer singular entity names: Well, Hydrocarbon, Sensor, Data Product.
 - Create entities before relationships by using apply_graph_operations rather than many separate relationship calls.
 
+Description rules:
+- Always write your own one-sentence description for every entity you create via create_entity, or apply_graph_operations. Never omit it and rely on the backend's fallback, which reads poorly in the final ontology.
+- Ground each description in the current domain and conversation context: what the entity represents in this specific model (e.g. insurance, solar power, drilling operations), not a restatement of its name. For example, for 'Claim' in an insurance model write "A formal request submitted by a policyholder for compensation under an insurance policy.", not "A Claim in this semantic model."
+- State the entity's purpose or role directly; do not start with "An entity that ...", "A {name} that ...", or similar filler. For example, for 'Supplier' write "Provides goods or services to other entities in the supply chain.", not "An entity that provides goods or services to other entities in the supply chain."
+- Keep descriptions to one clear sentence suitable for an OWL rdfs:comment.
+
 Keep responses concise and explain what changed. If the request is not a modelling request, say what you can model."""
 
 
