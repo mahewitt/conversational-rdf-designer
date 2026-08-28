@@ -7,6 +7,7 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from .graph_store import GraphStore
+from .web_fetch import fetch_page_text
 
 
 class CreateEntityInput(BaseModel):
@@ -79,6 +80,10 @@ class ClearGraphInput(BaseModel):
 class SetNamespaceInput(BaseModel):
     prefix: str = Field(description="Short Turtle prefix to use for generated OWL entities, for example 'prod' or 'oil'. Do not include the trailing colon.")
     namespace: str = Field(description="Base IRI namespace for generated OWL entities, for example 'https://example.com/model/production#'.")
+
+
+class FetchUrlInput(BaseModel):
+    url: str = Field(description="Full http(s) URL of the web page to fetch, for example 'https://example.com/solar-power'.")
 
 
 class ExtractedEntity(BaseModel):
@@ -258,6 +263,23 @@ def set_namespace_tool(store: GraphStore) -> StructuredTool:
     )
 
 
+def fetch_url_tool() -> StructuredTool:
+    def fetch_url(url: str) -> dict[str, str]:
+        return fetch_page_text(url)
+
+    return StructuredTool.from_function(
+        fetch_url,
+        name="fetch_url",
+        description=(
+            "Fetch the substantive text content of a web page, with navigation, headers, footers, sidebars, scripts, "
+            "and forms already stripped out. Always call this first when the user gives a URL to model from (e.g. "
+            "'create an ontology from: https://...'), then extract entities and relationships from the returned "
+            "text via apply_graph_operations. Never fabricate content for a URL you have not fetched."
+        ),
+        args_schema=FetchUrlInput,
+    )
+
+
 def apply_graph_operations_tool(store: GraphStore) -> StructuredTool:
     def normalize(items: list[Any] | None) -> list[dict[str, Any]]:
         return [item.model_dump() if isinstance(item, BaseModel) else item for item in items or []]
@@ -355,6 +377,7 @@ def modelling_tools(store: GraphStore) -> list[StructuredTool]:
         merge_entities_tool(store),
         clear_graph_tool(store),
         set_namespace_tool(store),
+        fetch_url_tool(),
         apply_graph_operations_tool(store),
         save_model_tool(store),
         save_speckit_tool(store),

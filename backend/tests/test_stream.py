@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 import pytest
 import json
 
@@ -153,6 +153,72 @@ def test_document_extraction_uses_bulk_graph_operations(monkeypatch) -> None:
 
     assert {node["id"] for node in state["nodes"]} == {"facility", "well", "hydrocarbon", "sensor", "production", "data-product"}
     assert {edge["label"] for edge in state["edges"]} == {"contains", "produces", "measures", "is stored in"}
+
+
+def test_url_extraction_fetches_page_then_applies_graph_operations(monkeypatch) -> None:
+    from app import semantic_tools
+
+    class FakeModel:
+        def __init__(self):
+            self.calls = 0
+
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages, config=None):
+            self.calls += 1
+            if self.calls == 1:
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call-fetch",
+                            "name": "fetch_url",
+                            "args": {"url": "https://www.statkraft.com/energy-technologies/solar-power/"},
+                        }
+                    ],
+                )
+            if self.calls == 2:
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call-extract",
+                            "name": "apply_graph_operations",
+                            "args": {
+                                "entities": [
+                                    {"name": "Solar Panel", "description": "Converts sunlight into electricity using photovoltaic cells."},
+                                    {"name": "Inverter", "description": "Converts direct current from panels into alternating current."},
+                                ],
+                                "relationships": [{"source": "Solar Panel", "predicate": "supplies power to", "target": "Inverter"}],
+                            },
+                        }
+                    ],
+                )
+            return AIMessage(content="Created a solar power ontology from the fetched page.")
+
+    fake_model = FakeModel()
+    monkeypatch.setattr(graph, "configured_model", lambda: fake_model)
+    monkeypatch.setattr(
+        semantic_tools,
+        "fetch_page_text",
+        lambda url: {
+            "url": url,
+            "title": "Solar Power",
+            "text": "A solar panel converts sunlight into electricity. An inverter converts direct current into alternating current.",
+        },
+    )
+
+    response = post_agent_message(
+        TestClient(app),
+        "create an ontology from: https://www.statkraft.com/energy-technologies/solar-power/",
+        run_id="url-turn",
+        thread_id="url-thread",
+    )
+    state = latest_state_snapshot(response.text)
+
+    assert {node["id"] for node in state["nodes"]} == {"solar-panel", "inverter"}
+    assert fake_model.calls == 3
 
 
 def test_multimodal_er_diagram_extraction_uses_apply_graph_operations(monkeypatch) -> None:
@@ -413,3 +479,26 @@ def test_missing_model_configuration_fails_loudly(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="OPENAI_ENDPOINT"):
         graph.configured_model()
+
+
+def test_reconcile_dangling_tool_calls_synthesizes_missing_tool_response() -> None:
+    ai_message = AIMessage(
+        content="",
+        tool_calls=[{"id": "call-abandoned", "name": "clear_graph", "args": {"reason": "start over"}}],
+    )
+    messages = [HumanMessage("Clear the graph"), ai_message, HumanMessage("Never mind, add a Well")]
+
+    reconciled = graph.reconcile_dangling_tool_calls(messages)
+
+    assert [type(message) for message in reconciled] == [HumanMessage, AIMessage, ToolMessage, HumanMessage]
+    assert reconciled[2].tool_call_id == "call-abandoned"
+
+
+def test_reconcile_dangling_tool_calls_leaves_answered_calls_untouched() -> None:
+    ai_message = AIMessage(content="", tool_calls=[{"id": "call-1", "name": "create_entity", "args": {"name": "Well"}}])
+    tool_message = ToolMessage(content="{'id': 'well'}", tool_call_id="call-1")
+    messages = [ai_message, tool_message]
+
+    reconciled = graph.reconcile_dangling_tool_calls(messages)
+
+    assert reconciled == messages

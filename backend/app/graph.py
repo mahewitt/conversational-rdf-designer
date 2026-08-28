@@ -48,7 +48,8 @@ Tool contract:
 - Use set_namespace when the user asks to change the OWL/Turtle prefix, namespace, base IRI, or entity IRI namespace.
 - Use save_model when the user asks to save the model, persist the graph, save as RDF, export RDF, or download the Turtle file.
 - Use save_speckit when the user asks to save as speckit, export a spec-kit spec, generate a data product specification, or produce a spec.md for building the ontology into a data product.
-- Use apply_graph_operations for pasted documents, extraction requests, ER/UML/schema diagrams, image inputs, or any request with multiple facts, entities, relationships, or attributes.
+- Use fetch_url first, whenever the user gives a URL to model from (e.g. 'create an ontology from: <url>'), to retrieve the page's real text before extracting anything.
+- Use apply_graph_operations for pasted documents, extraction requests, ER/UML/schema diagrams, image inputs, fetched web page text, or any request with multiple facts, entities, relationships, or attributes.
 
 Diagram and ER extraction rules:
 - When an image or diagram (such as an ER diagram, UML class diagram, database schema, or conceptual model) is provided:
@@ -63,6 +64,12 @@ Extraction rules:
 - Include a concise, domain-specific description for each entity when it can be inferred from the user request or source text/diagram.
 - Prefer singular entity names: Well, Hydrocarbon, Sensor, Data Product.
 - Create entities before relationships by using apply_graph_operations rather than many separate relationship calls.
+
+URL rules:
+- When the user gives a URL (e.g. 'create an ontology from: <url>'), always call fetch_url on it first. Never refuse, ask them to paste the content, or fabricate content for a URL you have not fetched.
+- Extract entities and relationships only from the substantive domain content fetch_url returns (e.g. products, technologies, processes, organizations, business concepts).
+- Never create entities for the web page's own navigation or interface chrome, such as 'Home', 'Menu', 'Search', 'Login', 'Sign Up', 'Contact Us', 'Cookie Policy', 'Privacy Policy', 'Newsletter', 'Language Selector', social-media links, or breadcrumb labels. If fetch_url's stripped text still contains stray boilerplate like this, ignore it and model only the real subject matter.
+- If fetch_url fails or the page has no substantive content, tell the user and ask them to paste the text instead of guessing.
 
 Description rules:
 - Always write your own one-sentence description for every entity you create via create_entity, or apply_graph_operations. Never omit it and rely on the backend's fallback, which reads poorly in the final ontology.
@@ -155,9 +162,32 @@ async def call_model(state: GraphState, config: RunnableConfig) -> GraphState:
 async def model_response(state: GraphState, tools: dict[str, Any], config: RunnableConfig) -> AIMessage | None:
     model = configured_model()
     bound_model = model.bind_tools(list(tools.values()))
-    messages = [SystemMessage(content=SYSTEM_PROMPT), *state.get("messages", [])]
+    messages = [SystemMessage(content=SYSTEM_PROMPT), *reconcile_dangling_tool_calls(state.get("messages", []))]
     response = await bound_model.ainvoke(messages, config=config)
     return response if isinstance(response, AIMessage) else None
+
+
+def reconcile_dangling_tool_calls(messages: list[Any]) -> list[Any]:
+    """Synthesize responses for tool_calls left unanswered by an abandoned HITL interrupt.
+
+    An AIMessage with tool_calls must be immediately followed by a ToolMessage per call_id
+    or the OpenAI-compatible API rejects the whole request with a 400 error. This can happen
+    when a human-in-the-loop confirmation (e.g. clear_graph) is dismissed or left unresolved.
+    """
+    answered_call_ids = {message.tool_call_id for message in messages if isinstance(message, ToolMessage)}
+    reconciled: list[Any] = []
+    for message in messages:
+        reconciled.append(message)
+        if isinstance(message, AIMessage) and message.tool_calls:
+            for call in message.tool_calls:
+                if call["id"] not in answered_call_ids:
+                    reconciled.append(
+                        ToolMessage(
+                            content="Tool call was not completed (a human-in-the-loop confirmation was not resolved).",
+                            tool_call_id=call["id"],
+                        )
+                    )
+    return reconciled
 
 
 def run_tools(state: GraphState) -> GraphState:

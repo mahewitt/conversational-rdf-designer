@@ -24,7 +24,7 @@ User (if needed):
 Cleanup 
 
 ```text
-cyber cash can also have registered multiple credit cards
+cyber cash can also have a registered credit card
 ```
 
 ```text
