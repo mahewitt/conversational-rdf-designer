@@ -231,6 +231,9 @@ export default function Home() {
           <div>
             <div className="eyebrow">SEMANTIC DESIGNER / UNTITLED MODEL</div>
             <h1>Shape knowledge together.</h1>
+            <p className="tagline">
+              Without ontology, data is just a collection of bytes. With ontology, it becomes a network of knowledge.
+            </p>
           </div>
           <div className="header-actions">
             <button
