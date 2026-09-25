@@ -6,7 +6,8 @@
         "~/.agents/skills": true,
         "~/.copilot/skills": true,
         "~/.claude/skills": true,
-        "~/.vscode/extensions/synapsevscode.synapse-1.25.0/copilot/skills": true
+        "~/.vscode/extensions/synapsevscode.synapse-1.25.0/copilot/skills": true,
+        "~/.vscode/extensions/synapsevscode.synapse-1.26.0/copilot/skills": true
     },
     "chat.tools.terminal.autoApprove": {
         "/^Set-Location 'C:\\\\dev\\\\AI\\\\conversational-rdf-designer\\\\backend'; uv run pytest$/": {
